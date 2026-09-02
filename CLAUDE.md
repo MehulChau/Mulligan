@@ -60,10 +60,21 @@ Status: parts being ordered; hardware is NOT the current workstream.
 - Manual/simulated shot entry stands in for the device until hardware exists (design a clean ShotEvent interface: {ballSpeedMph, launchDeg, spinRpm, spinAxisDeg, startLineDeg, clubId, timestamp} — the hardware's ONLY job later is to emit these)
 - Scoring vs par; then handicap, challenge modes, ghost multiplayer per the runway
 
-## Tech stack guidance
-- v0/v1 game can stay web-first (fast iteration, current prototype is HTML/canvas); phone app is the eventual product — React Native/Expo is the likely path (Mehul has RN-adjacent mobile experience). Decide when the game loop is proven.
+## Tech stack (decided 2026-09-01, for v1 game)
+npm workspaces monorepo:
+```
+Mulligan/
+├── packages/
+│   ├── physics/       @mulligan/physics — pure TS, zero deps, the ball-flight model + club presets + calibration config
+│   └── shot-source/    @mulligan/shot-source — ShotEvent interface + SimulatedShotSource (depends on physics)
+└── apps/
+    └── web/            @mulligan/web — Vite + React 18 + TS, canvas rendering for the hole/ball-flight view
+```
+- **apps/web**: Vite + React + TypeScript, plain `<canvas>` for game rendering (no game-engine library) — matches flight-lab.html's approach, keeps deps minimal. React owns the HUD/club-picker/scorecard UI, which is the part most likely to carry over to React Native later.
+- **packages/physics** and **packages/shot-source** are plain TS with no React/browser APIs — this is what lets the same math run in the web app, a future backend, and tests unchanged. When phone (React Native/Expo) or the Pi backend arrive, they become new consumers of these same packages, not rewrites.
+- Package manager: npm (workspaces). Test runner: Vitest. TypeScript strict mode everywhere, project references wire the packages together for typechecking.
 - Device↔phone link will be BLE or WiFi from the Pi; abstract behind the ShotEvent interface so transport is swappable.
-- Keep the physics engine a pure, dependency-free module (same math must eventually run in app + backend + tests).
+- Decide on React Native/Expo for the mobile port once the web game loop is proven — not committed yet.
 
 ## App name — candidates (not final)
 Top picks: **Forecaddie** (a forecaddie literally watches where your ball goes; Fore + forecast), **Mulligan** (the do-over — friendly game energy), **Magnus** (the physics making the ball fly). Others considered: Flush, Pure, Smash Factor, Carry, Dimple, Yardstick, Hangtime, BallPark, Snapshot. Avoid anything echoing SkyTrak/Arccos/Shot Scope/Mevo.
