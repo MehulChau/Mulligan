@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Flight Lab v0</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap">
+<style>
+:root{
+  --bg:#F3F6F0; --panel:#FBFCF9; --ink:#1C2721; --sub:#5C6B61;
+  --green:#1E6B44; --deep:#0D3B25; --amber:#C9862B; --line:#D8DFD3;
+  --chipbg:#E9EFE6; --track:#CBD5C6;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0F1512; --panel:#161E19; --ink:#E6EBE4; --sub:#93A398;
+    --green:#3FA871; --deep:#7ED0A5; --amber:#E0A44E; --line:#273129;
+    --chipbg:#1E2822; --track:#2C382F;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0F1512; --panel:#161E19; --ink:#E6EBE4; --sub:#93A398;
+  --green:#3FA871; --deep:#7ED0A5; --amber:#E0A44E; --line:#273129;
+  --chipbg:#1E2822; --track:#2C382F;
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+body{
+  background:var(--bg); color:var(--ink);
+  font-family:'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  padding:20px 16px 48px; line-height:1.5;
+}
+.wrap{max-width:860px; margin:0 auto;}
+header{display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:6px;}
+h1{font-size:26px; font-weight:800; letter-spacing:-0.02em;}
+h1 span{color:var(--green);}
+.tag{font-size:13px; color:var(--sub);}
+.sub{font-size:14px; color:var(--sub); margin-bottom:18px; max-width:62ch;}
+
+.clubs{display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px;}
+.club{
+  font-family:inherit; font-size:13px; font-weight:600; letter-spacing:0.01em;
+  padding:7px 13px; border-radius:999px; border:1px solid var(--line);
+  background:var(--chipbg); color:var(--ink); cursor:pointer;
+}
+.club.on{background:var(--green); border-color:var(--green); color:#fff;}
+:root[data-theme="dark"] .club.on, .dark-on{color:#0F1512;}
+
+.grid{display:grid; grid-template-columns:1fr 1fr; gap:10px 22px; margin-bottom:14px;}
+@media (max-width:560px){ .grid{grid-template-columns:1fr;} }
+.ctl label{display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:2px;}
+.ctl label output{font-weight:800; color:var(--green); font-variant-numeric:tabular-nums;}
+.ctl small{display:block; font-size:11.5px; color:var(--sub); margin-top:-1px;}
+input[type=range]{width:100%; accent-color:var(--green); background:transparent; height:26px;}
+
+.hitrow{display:flex; gap:12px; align-items:center; margin:6px 0 18px;}
+.hit{
+  font-family:inherit; font-size:15px; font-weight:800; letter-spacing:0.02em;
+  background:var(--green); color:#fff; border:none; border-radius:10px;
+  padding:12px 26px; cursor:pointer;
+}
+.hit:active{transform:translateY(1px);}
+.hint{font-size:12.5px; color:var(--sub);}
+
+.results{
+  display:grid; grid-template-columns:repeat(6,1fr); gap:2px;
+  background:var(--panel); border:1px solid var(--line); border-radius:12px;
+  padding:12px 8px; margin-bottom:16px;
+}
+@media (max-width:560px){ .results{grid-template-columns:repeat(3,1fr); row-gap:12px;} }
+.res{text-align:center;}
+.res b{display:block; font-size:20px; font-weight:800; font-variant-numeric:tabular-nums; letter-spacing:-0.01em;}
+.res b.hero{color:var(--amber); font-size:22px;}
+.res span{font-size:11.5px; color:var(--sub);}
+
+.viewbox{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; margin-bottom:14px;}
+.viewbox h2{font-size:13px; font-weight:600; color:var(--sub); margin-bottom:8px;}
+canvas{width:100%; display:block; border-radius:8px;}
+footer{font-size:12px; color:var(--sub); margin-top:8px; max-width:70ch;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header><h1>Flight <span>Lab</span></h1><div class="tag">launch monitor physics engine · v0</div></header>
+<p class="sub">Set launch conditions by hand today; your device will set them for real later. Drag + Magnus lift + spin decay under the hood.</p>
+
+<div class="clubs" id="clubs"></div>
+
+<div class="grid">
+  <div class="ctl"><label>Ball speed <output id="ospeed"></output></label>
+    <input type="range" id="speed" min="40" max="200" step="1"></div>
+  <div class="ctl"><label>Launch angle <output id="olaunch"></output></label>
+    <input type="range" id="launch" min="4" max="45" step="0.5"></div>
+  <div class="ctl"><label>Spin rate <output id="ospin"></output></label>
+    <input type="range" id="spin" min="1000" max="11000" step="100">
+    <small>v1 estimates this from club — your dial for now</small></div>
+  <div class="ctl"><label>Spin axis <output id="oaxis"></output></label>
+    <input type="range" id="axis" min="-20" max="20" step="1">
+    <small>negative curves left (draw), positive right (fade)</small></div>
+  <div class="ctl"><label>Start line <output id="oaim"></output></label>
+    <input type="range" id="aim" min="-10" max="10" step="0.5">
+    <small>measured by the phone behind the ball</small></div>
+</div>
+
+<div class="hitrow">
+  <button class="hit" id="hit">Hit shot</button>
+  <div class="hint" id="hint">Pick a club or set your own numbers.</div>
+</div>
+
+<div class="results" id="results">
+  <div class="res"><b class="hero" id="rcarry">–</b><span>carry yds</span></div>
+  <div class="res"><b id="rtotal">–</b><span>total yds (est)</span></div>
+  <div class="res"><b id="rapex">–</b><span>apex ft</span></div>
+  <div class="res"><b id="rtime">–</b><span>flight s</span></div>
+  <div class="res"><b id="rside">–</b><span>side yds</span></div>
+  <div class="res"><b id="rdesc">–</b><span>descent °</span></div>
+</div>
+
+<div class="viewbox"><h2>Side view</h2><canvas id="side" height="220"></canvas></div>
+<div class="viewbox"><h2>Top view</h2><canvas id="top" height="170"></canvas></div>
+
+<footer>Physics: point-mass model, air density 1.225 kg/m³, lift and drag coefficients from spin ratio, ~3%/s spin decay. Roll is a rough estimate from landing angle and spin. Calibrate against your real gapping numbers at the range.</footer>
+</div>
+
+<script>
+const CLUBS = [
+  ["Driver",150,12.5,2800,0,0],
+  ["3-wood",140,13.5,3800,0,0],
+  ["Hybrid",128,15,4600,0,0],
+  ["5-iron",118,16.5,5400,0,0],
+  ["7-iron",106,18.5,7100,0,0],
+  ["9-iron",94,23,8600,0,0],
+  ["Wedge",86,26.5,9300,0,0],
+];
+const $ = id => document.getElementById(id);
+const sliders = {speed:$("speed"),launch:$("launch"),spin:$("spin"),axis:$("axis"),aim:$("aim")};
+const outs = {speed:$("ospeed"),launch:$("olaunch"),spin:$("ospin"),axis:$("oaxis"),aim:$("oaim")};
+
+function fmtOuts(){
+  outs.speed.textContent = sliders.speed.value + " mph";
+  outs.launch.textContent = sliders.launch.value + "°";
+  outs.spin.textContent = Number(sliders.spin.value).toLocaleString() + " rpm";
+  const ax = Number(sliders.axis.value);
+  outs.axis.textContent = ax === 0 ? "0°" : (ax<0? ax+"° L" : ax+"° R");
+  const am = Number(sliders.aim.value);
+  outs.aim.textContent = am === 0 ? "0°" : (am<0? Math.abs(am)+"° L" : am+"° R");
+}
+Object.values(sliders).forEach(s => s.addEventListener("input", ()=>{ fmtOuts(); clearActive(); }));
+
+const clubsEl = $("clubs");
+CLUBS.forEach((c,i)=>{
+  const b = document.createElement("button");
+  b.className = "club"; b.textContent = c[0];
+  b.onclick = ()=>{
+    sliders.speed.value=c[1]; sliders.launch.value=c[2]; sliders.spin.value=c[3];
+    sliders.axis.value=c[4]; sliders.aim.value=c[5];
+    fmtOuts();
+    document.querySelectorAll(".club").forEach(x=>x.classList.remove("on"));
+    b.classList.add("on");
+    hit();
+  };
+  clubsEl.appendChild(b);
+});
+function clearActive(){ document.querySelectorAll(".club").forEach(x=>x.classList.remove("on")); }
+
+// ---------- physics ----------
+const G=9.81, RHO=1.225, M=0.04593, D=0.04267;
+const A=Math.PI*D*D/4, R=D/2, K=RHO*A/(2*M);
+
+function simulate(speedMph, launchDeg, spinRpm, axisDeg, aimDeg){
+  const v0=speedMph*0.44704, L=launchDeg*Math.PI/180, Aim=aimDeg*Math.PI/180, T=axisDeg*Math.PI/180;
+  let vx=v0*Math.cos(L)*Math.cos(Aim), vy=v0*Math.sin(L), vz=v0*Math.cos(L)*Math.sin(Aim);
+  let x=0,y=0,z=0, w=spinRpm*2*Math.PI/60, t=0;
+  const ax=[0,-Math.sin(T),Math.cos(T)]; // spin axis unit vector
+  const dt=0.004, pts=[[0,0,0]];
+  let apex=0, lastVy=vy, landVx=0, landVy=0;
+  while(y>=0 && t<15){
+    const sp=Math.hypot(vx,vy,vz);
+    const S=Math.min(0.35, w*R/sp);
+    const CL=Math.min(0.34, 0.54*Math.pow(S,0.4));
+    const CD=Math.min(0.34, 0.22+0.55*S);
+    // lift direction = axis x v, normalized
+    let lx=ax[1]*vz-ax[2]*vy, ly=ax[2]*vx-ax[0]*vz, lz=ax[0]*vy-ax[1]*vx;
+    const lm=Math.hypot(lx,ly,lz)||1; lx/=lm; ly/=lm; lz/=lm;
+    const fd=K*CD*sp, fl=K*CL*sp*sp;
+    const axx=-fd*vx+fl*lx, ayy=-fd*vy+fl*ly-G, azz=-fd*vz+fl*lz;
+    vx+=axx*dt; vy+=ayy*dt; vz+=azz*dt;
+    x+=vx*dt; y+=vy*dt; z+=vz*dt;
+    w*=Math.exp(-0.033*dt); t+=dt;
+    if(y>apex) apex=y;
+    if(pts.length===0 || t - pts[pts.length-1][3] > 0.02) {}
+    pts.push([x,y,z,t]);
+    landVx=Math.hypot(vx,vz); landVy=vy; lastVy=vy;
+  }
+  const carryY=x*1.09361, sideY=z*1.09361, apexFt=apex*3.28084;
+  const landAng=Math.atan2(-landVy,landVx)*180/Math.PI;
+  const roll=Math.max(0, Math.min(45, 65*(1-landAng/52)*Math.sqrt(2800/Math.max(spinRpm,2000))));
+  return {pts, carryY, sideY, apexFt, time:t, landAng, rollY:roll, totalY:carryY+roll};
+}
+
+// ---------- drawing ----------
+const sideC=$("side"), topC=$("top");
+function setup(c){ const w=c.clientWidth; c.width=w*2; c.style.height=c.getAttribute("height")+"px"; c.height=Number(c.getAttribute("height"))*2; const g=c.getContext("2d"); g.scale(2,2); return g; }
+let res=null, animT=0, animing=false;
+
+function draw(prog){
+  const gs=setup(sideC), gt=setup(topC);
+  const W=sideC.clientWidth, HS=220, HT=170;
+  // scene colors (fixed — self-contained scene, works in both themes)
+  gs.fillStyle="#DCEAF2"; gs.fillRect(0,0,W,HS);
+  gs.fillStyle="#7FB069"; gs.fillRect(0,HS-24,W,24);
+  gt.fillStyle="#6FA35C"; gt.fillRect(0,0,W,HT);
+  gt.fillStyle="#7FB069"; gt.fillRect(0,HT*0.2,W,HT*0.6);
+  const maxX=Math.max(150, (res? res.totalY:0)+30);
+  const sx=v=> 16 + (v/maxX)*(W-32);
+  const syS=v=> (HS-24) - (v/ (Math.max(60,(res? res.apexFt:0)+20)) )*(HS-50);
+  const syT=v=> HT/2 + (v/45)*(HT/2-14);
+  // grid every 50 yds
+  gs.strokeStyle="rgba(0,0,0,0.12)"; gt.strokeStyle="rgba(255,255,255,0.35)";
+  gs.fillStyle="rgba(28,39,33,0.55)"; gt.fillStyle="rgba(255,255,255,0.85)";
+  gs.font="10px Archivo, sans-serif"; gt.font="10px Archivo, sans-serif";
+  for(let m=50;m<maxX;m+=50){
+    gs.beginPath(); gs.moveTo(sx(m),HS-24); gs.lineTo(sx(m),HS-30); gs.stroke();
+    gs.fillText(m, sx(m)-8, HS-8);
+    gt.beginPath(); gt.moveTo(sx(m),0); gt.lineTo(sx(m),HT); gt.stroke();
+    gt.fillText(m, sx(m)-8, 12);
+  }
+  // center target line (top view)
+  gt.setLineDash([5,5]); gt.strokeStyle="rgba(255,255,255,0.7)";
+  gt.beginPath(); gt.moveTo(sx(0),syT(0)); gt.lineTo(W-10,syT(0)); gt.stroke(); gt.setLineDash([]);
+  if(!res) return;
+  const n=Math.max(2, Math.floor(res.pts.length*prog));
+  // flight paths
+  gs.strokeStyle="#C9862B"; gs.lineWidth=2.5; gs.beginPath();
+  gt.strokeStyle="#F5E9D0"; gt.lineWidth=2.5; gt.beginPath();
+  for(let i=0;i<n;i++){
+    const p=res.pts[i], px=sx(p[0]*1.09361), pys=syS(p[1]*3.28084), pyt=syT(p[2]*1.09361);
+    if(i===0){gs.moveTo(px,pys); gt.moveTo(px,pyt);} else {gs.lineTo(px,pys); gt.lineTo(px,pyt);}
+  }
+  gs.stroke(); gt.stroke();
+  const last=res.pts[n-1];
+  const bx=sx(last[0]*1.09361);
+  // ball
+  gs.fillStyle="#FFFFFF"; gs.strokeStyle="rgba(0,0,0,0.3)"; gs.lineWidth=1;
+  gs.beginPath(); gs.arc(bx, syS(last[1]*3.28084), 4.5, 0, 7); gs.fill(); gs.stroke();
+  gt.fillStyle="#FFFFFF"; gt.strokeStyle="rgba(0,0,0,0.3)";
+  gt.beginPath(); gt.arc(bx, syT(last[2]*1.09361), 4.5, 0, 7); gt.fill(); gt.stroke();
+  // roll segment after landing (top view), only when done
+  if(prog>=1){
+    const lx=sx(res.carryY), rx=sx(res.totalY), ly=syT(res.sideY);
+    gt.strokeStyle="rgba(255,255,255,0.7)"; gt.setLineDash([3,4]);
+    gt.beginPath(); gt.moveTo(lx,ly); gt.lineTo(rx,ly); gt.stroke(); gt.setLineDash([]);
+    gt.fillStyle="#F0D9A8"; gt.beginPath(); gt.arc(rx,ly,4,0,7); gt.fill();
+  }
+}
+
+function showResults(){
+  $("rcarry").textContent=Math.round(res.carryY);
+  $("rtotal").textContent=Math.round(res.totalY);
+  $("rapex").textContent=Math.round(res.apexFt);
+  $("rtime").textContent=res.time.toFixed(1);
+  const s=res.sideY;
+  $("rside").textContent=Math.abs(s)<0.5? "0" : Math.abs(s).toFixed(0)+(s<0?" L":" R");
+  $("rdesc").textContent=Math.round(res.landAng);
+}
+
+function hit(){
+  res=simulate(+sliders.speed.value,+sliders.launch.value,+sliders.spin.value,+sliders.axis.value,+sliders.aim.value);
+  showResults();
+  $("hint").textContent="Carry "+Math.round(res.carryY)+" yds — tweak and swing again.";
+  if(animing) return;
+  animing=true; const t0=performance.now(), dur=1400;
+  function frame(now){
+    const p=Math.min(1,(now-t0)/dur);
+    draw(p*p*(3-2*p));
+    if(p<1) requestAnimationFrame(frame); else {animing=false; draw(1);}
+  }
+  requestAnimationFrame(frame);
+}
+$("hit").addEventListener("click", hit);
+window.addEventListener("resize", ()=>{ if(res&&!animing) draw(1); });
+
+// boot with a 7-iron
+sliders.speed.value=106; sliders.launch.value=18.5; sliders.spin.value=7100; sliders.axis.value=0; sliders.aim.value=0;
+fmtOuts();
+try{ hit(); document.querySelectorAll(".club")[4].classList.add("on"); }catch(e){}
+</script>
+</body>
+</html>
