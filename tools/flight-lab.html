@@ -108,29 +108,30 @@ footer{font-size:12px; color:var(--sub); margin-top:8px; max-width:70ch;}
 
 <div class="results" id="results">
   <div class="res"><b class="hero" id="rcarry">–</b><span>carry yds</span></div>
-  <div class="res"><b id="rtotal">–</b><span>total yds (est)</span></div>
   <div class="res"><b id="rapex">–</b><span>apex ft</span></div>
   <div class="res"><b id="rtime">–</b><span>flight s</span></div>
   <div class="res"><b id="rside">–</b><span>side yds</span></div>
   <div class="res"><b id="rdesc">–</b><span>descent °</span></div>
+  <div class="res"><b id="rspeed">–</b><span>landing mph</span></div>
 </div>
 
 <div class="viewbox"><h2>Side view</h2><canvas id="side" height="220"></canvas></div>
 <div class="viewbox"><h2>Top view</h2><canvas id="top" height="170"></canvas></div>
 
-<footer>Physics: point-mass model, air density 1.225 kg/m³, lift and drag coefficients from spin ratio, ~3%/s spin decay. Roll is a rough estimate from landing angle and spin. Calibrate against your real gapping numbers at the range.</footer>
+<footer>Physics: point-mass model, air density 1.225 kg/m³, lift and drag coefficients from spin ratio, ~3%/s spin decay, from the shared <code>@mulligan/physics</code> module. Rollout depends on the surface the ball lands on (fairway, green, rough, sand) and isn't modeled here — that's the M2 shot resolver's job, using the landing speed and descent angle below. Calibrate against your real gapping numbers at the range.</footer>
 </div>
 
-<script>
-const CLUBS = [
-  ["Driver",150,12.5,2800,0,0],
-  ["3-wood",140,13.5,3800,0,0],
-  ["Hybrid",128,15,4600,0,0],
-  ["5-iron",118,16.5,5400,0,0],
-  ["7-iron",106,18.5,7100,0,0],
-  ["9-iron",94,23,8600,0,0],
-  ["Wedge",86,26.5,9300,0,0],
-];
+<script type="module">
+// This file imports the SAME math the app, backend, and tests use — it
+// carries no physics of its own. Run `npm run build:tools` from the repo
+// root after any physics/club change, then serve the repo root over HTTP
+// (browsers block ES module imports over file://) — e.g. `npm run tools`.
+import {
+  simulate, degToRad, radToDeg, mphToMps, mpsToMph,
+  metersToYards, metersToFeet, rpmToRadPerSec,
+} from "../packages/physics/bundle/index.js";
+import { CLUBS } from "../packages/shot-source/bundle/index.js";
+
 const $ = id => document.getElementById(id);
 const sliders = {speed:$("speed"),launch:$("launch"),spin:$("spin"),axis:$("axis"),aim:$("aim")};
 const outs = {speed:$("ospeed"),launch:$("olaunch"),spin:$("ospin"),axis:$("oaxis"),aim:$("oaim")};
@@ -147,12 +148,12 @@ function fmtOuts(){
 Object.values(sliders).forEach(s => s.addEventListener("input", ()=>{ fmtOuts(); clearActive(); }));
 
 const clubsEl = $("clubs");
-CLUBS.forEach((c,i)=>{
+CLUBS.forEach((c)=>{
   const b = document.createElement("button");
-  b.className = "club"; b.textContent = c[0];
+  b.className = "club"; b.textContent = c.name;
   b.onclick = ()=>{
-    sliders.speed.value=c[1]; sliders.launch.value=c[2]; sliders.spin.value=c[3];
-    sliders.axis.value=c[4]; sliders.aim.value=c[5];
+    sliders.speed.value=c.ballSpeedMph; sliders.launch.value=c.launchDeg; sliders.spin.value=c.spinRpm;
+    sliders.axis.value=0; sliders.aim.value=0;
     fmtOuts();
     document.querySelectorAll(".club").forEach(x=>x.classList.remove("on"));
     b.classList.add("on");
@@ -162,55 +163,44 @@ CLUBS.forEach((c,i)=>{
 });
 function clearActive(){ document.querySelectorAll(".club").forEach(x=>x.classList.remove("on")); }
 
-// ---------- physics ----------
-const G=9.81, RHO=1.225, M=0.04593, D=0.04267;
-const A=Math.PI*D*D/4, R=D/2, K=RHO*A/(2*M);
-
-function simulate(speedMph, launchDeg, spinRpm, axisDeg, aimDeg){
-  const v0=speedMph*0.44704, L=launchDeg*Math.PI/180, Aim=aimDeg*Math.PI/180, T=axisDeg*Math.PI/180;
-  let vx=v0*Math.cos(L)*Math.cos(Aim), vy=v0*Math.sin(L), vz=v0*Math.cos(L)*Math.sin(Aim);
-  let x=0,y=0,z=0, w=spinRpm*2*Math.PI/60, t=0;
-  const ax=[0,-Math.sin(T),Math.cos(T)]; // spin axis unit vector
-  const dt=0.004, pts=[[0,0,0]];
-  let apex=0, lastVy=vy, landVx=0, landVy=0;
-  while(y>=0 && t<15){
-    const sp=Math.hypot(vx,vy,vz);
-    const S=Math.min(0.35, w*R/sp);
-    const CL=Math.min(0.34, 0.54*Math.pow(S,0.4));
-    const CD=Math.min(0.34, 0.22+0.55*S);
-    // lift direction = axis x v, normalized
-    let lx=ax[1]*vz-ax[2]*vy, ly=ax[2]*vx-ax[0]*vz, lz=ax[0]*vy-ax[1]*vx;
-    const lm=Math.hypot(lx,ly,lz)||1; lx/=lm; ly/=lm; lz/=lm;
-    const fd=K*CD*sp, fl=K*CL*sp*sp;
-    const axx=-fd*vx+fl*lx, ayy=-fd*vy+fl*ly-G, azz=-fd*vz+fl*lz;
-    vx+=axx*dt; vy+=ayy*dt; vz+=azz*dt;
-    x+=vx*dt; y+=vy*dt; z+=vz*dt;
-    w*=Math.exp(-0.033*dt); t+=dt;
-    if(y>apex) apex=y;
-    if(pts.length===0 || t - pts[pts.length-1][3] > 0.02) {}
-    pts.push([x,y,z,t]);
-    landVx=Math.hypot(vx,vz); landVy=vy; lastVy=vy;
-  }
-  const carryY=x*1.09361, sideY=z*1.09361, apexFt=apex*3.28084;
-  const landAng=Math.atan2(-landVy,landVx)*180/Math.PI;
-  const roll=Math.max(0, Math.min(45, 65*(1-landAng/52)*Math.sqrt(2800/Math.max(spinRpm,2000))));
-  return {pts, carryY, sideY, apexFt, time:t, landAng, rollY:roll, totalY:carryY+roll};
+// ---------- physics adapter (mph/deg/rpm UI <-> SI module) ----------
+function runShot(speedMph, launchDeg, spinRpm, axisDeg, aimDeg){
+  const trajectory = simulate({
+    ballSpeed: mphToMps(speedMph),
+    launchAngle: degToRad(launchDeg),
+    spinRate: rpmToRadPerSec(spinRpm),
+    spinAxis: degToRad(axisDeg),
+    startLine: degToRad(aimDeg),
+  });
+  return {
+    pts: trajectory.points.map(p => [p.x, p.y, p.z, p.t]),
+    carryY: metersToYards(trajectory.carry),
+    sideY: metersToYards(trajectory.lateral),
+    apexFt: metersToFeet(trajectory.apex),
+    time: trajectory.flightTime,
+    landAng: radToDeg(trajectory.landing.descentAngle),
+    landSpeedMph: mpsToMph(trajectory.landing.speed),
+  };
 }
 
 // ---------- drawing ----------
+// setup() takes the LOGICAL css height as a fixed parameter (HS/HT below) —
+// it must not read canvas.height back to compute it, because setting
+// canvas.height also rewrites the "height" attribute, and reading that
+// mutated value back would double the canvas size on every redraw.
 const sideC=$("side"), topC=$("top");
-function setup(c){ const w=c.clientWidth; c.width=w*2; c.style.height=c.getAttribute("height")+"px"; c.height=Number(c.getAttribute("height"))*2; const g=c.getContext("2d"); g.scale(2,2); return g; }
-let res=null, animT=0, animing=false;
+function setup(c, cssHeight){ const w=c.clientWidth; c.width=w*2; c.style.height=cssHeight+"px"; c.height=cssHeight*2; const g=c.getContext("2d"); g.scale(2,2); return g; }
+let res=null, animing=false;
 
 function draw(prog){
-  const gs=setup(sideC), gt=setup(topC);
   const W=sideC.clientWidth, HS=220, HT=170;
+  const gs=setup(sideC, HS), gt=setup(topC, HT);
   // scene colors (fixed — self-contained scene, works in both themes)
   gs.fillStyle="#DCEAF2"; gs.fillRect(0,0,W,HS);
   gs.fillStyle="#7FB069"; gs.fillRect(0,HS-24,W,24);
   gt.fillStyle="#6FA35C"; gt.fillRect(0,0,W,HT);
   gt.fillStyle="#7FB069"; gt.fillRect(0,HT*0.2,W,HT*0.6);
-  const maxX=Math.max(150, (res? res.totalY:0)+30);
+  const maxX=Math.max(150, (res? res.carryY:0)+30);
   const sx=v=> 16 + (v/maxX)*(W-32);
   const syS=v=> (HS-24) - (v/ (Math.max(60,(res? res.apexFt:0)+20)) )*(HS-50);
   const syT=v=> HT/2 + (v/45)*(HT/2-14);
@@ -233,38 +223,31 @@ function draw(prog){
   gs.strokeStyle="#C9862B"; gs.lineWidth=2.5; gs.beginPath();
   gt.strokeStyle="#F5E9D0"; gt.lineWidth=2.5; gt.beginPath();
   for(let i=0;i<n;i++){
-    const p=res.pts[i], px=sx(p[0]*1.09361), pys=syS(p[1]*3.28084), pyt=syT(p[2]*1.09361);
+    const p=res.pts[i], px=sx(metersToYards(p[0])), pys=syS(metersToFeet(p[1])), pyt=syT(metersToYards(p[2]));
     if(i===0){gs.moveTo(px,pys); gt.moveTo(px,pyt);} else {gs.lineTo(px,pys); gt.lineTo(px,pyt);}
   }
   gs.stroke(); gt.stroke();
   const last=res.pts[n-1];
-  const bx=sx(last[0]*1.09361);
+  const bx=sx(metersToYards(last[0]));
   // ball
   gs.fillStyle="#FFFFFF"; gs.strokeStyle="rgba(0,0,0,0.3)"; gs.lineWidth=1;
-  gs.beginPath(); gs.arc(bx, syS(last[1]*3.28084), 4.5, 0, 7); gs.fill(); gs.stroke();
+  gs.beginPath(); gs.arc(bx, syS(metersToFeet(last[1])), 4.5, 0, 7); gs.fill(); gs.stroke();
   gt.fillStyle="#FFFFFF"; gt.strokeStyle="rgba(0,0,0,0.3)";
-  gt.beginPath(); gt.arc(bx, syT(last[2]*1.09361), 4.5, 0, 7); gt.fill(); gt.stroke();
-  // roll segment after landing (top view), only when done
-  if(prog>=1){
-    const lx=sx(res.carryY), rx=sx(res.totalY), ly=syT(res.sideY);
-    gt.strokeStyle="rgba(255,255,255,0.7)"; gt.setLineDash([3,4]);
-    gt.beginPath(); gt.moveTo(lx,ly); gt.lineTo(rx,ly); gt.stroke(); gt.setLineDash([]);
-    gt.fillStyle="#F0D9A8"; gt.beginPath(); gt.arc(rx,ly,4,0,7); gt.fill();
-  }
+  gt.beginPath(); gt.arc(bx, syT(metersToYards(last[2])), 4.5, 0, 7); gt.fill(); gt.stroke();
 }
 
 function showResults(){
   $("rcarry").textContent=Math.round(res.carryY);
-  $("rtotal").textContent=Math.round(res.totalY);
   $("rapex").textContent=Math.round(res.apexFt);
   $("rtime").textContent=res.time.toFixed(1);
   const s=res.sideY;
   $("rside").textContent=Math.abs(s)<0.5? "0" : Math.abs(s).toFixed(0)+(s<0?" L":" R");
   $("rdesc").textContent=Math.round(res.landAng);
+  $("rspeed").textContent=Math.round(res.landSpeedMph);
 }
 
 function hit(){
-  res=simulate(+sliders.speed.value,+sliders.launch.value,+sliders.spin.value,+sliders.axis.value,+sliders.aim.value);
+  res=runShot(+sliders.speed.value,+sliders.launch.value,+sliders.spin.value,+sliders.axis.value,+sliders.aim.value);
   showResults();
   $("hint").textContent="Carry "+Math.round(res.carryY)+" yds — tweak and swing again.";
   if(animing) return;
@@ -280,9 +263,11 @@ $("hit").addEventListener("click", hit);
 window.addEventListener("resize", ()=>{ if(res&&!animing) draw(1); });
 
 // boot with a 7-iron
-sliders.speed.value=106; sliders.launch.value=18.5; sliders.spin.value=7100; sliders.axis.value=0; sliders.aim.value=0;
+const bootClub = CLUBS.find(c => c.id === "7i");
+sliders.speed.value=bootClub.ballSpeedMph; sliders.launch.value=bootClub.launchDeg; sliders.spin.value=bootClub.spinRpm;
+sliders.axis.value=0; sliders.aim.value=0;
 fmtOuts();
-try{ hit(); document.querySelectorAll(".club")[4].classList.add("on"); }catch(e){}
+try{ hit(); document.querySelectorAll(".club")[5].classList.add("on"); }catch(e){ console.error(e); }
 </script>
 </body>
 </html>

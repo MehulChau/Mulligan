@@ -40,33 +40,40 @@ Status: parts being ordered; hardware is NOT the current workstream.
 3. **The app / game** ← CURRENT WORKSTREAM. See below.
 4. **Feature runway**: challenge modes, async multiplayer (ghost shots), daily challenge, GSPro connect API integration, shot classification, practice/proximity games.
 
-## Current state: Flight Lab v0 (physics engine prototype)
-`flight-lab.html` in this repo — a working single-file interactive ball-flight simulator. This is the seed of the whole app. It has:
-- Point-mass flight integration: drag + Magnus lift + gravity, semi-implicit Euler dt=0.004s
-- Constants: m=0.04593kg, d=0.04267m, ρ=1.225, K=ρA/2m
-- Spin ratio S=ωr/v; CL=min(0.34, 0.54·S^0.4); CD=min(0.34, 0.22+0.55·S); spin decay exp(−0.033t)
-- Spin axis tilt → lateral Magnus component (negative = draw/left, positive = fade/right)
-- Crude roll estimate from landing angle + spin (labeled as estimate)
-- Club presets (ball speed mph / launch° / spin rpm): Driver 150/12.5/2800, 3W 140/13.5/3800, Hybrid 128/15/4600, 5i 118/16.5/5400, 7i 106/18.5/7100, 9i 94/23/8600, Wedge 86/26.5/9300
-- Side view + top view canvas rendering with animated flight
+## Current state: M0 done — physics extracted into a pure, tested TS module
+The playable-hole MVP is being built in labeled milestones: **M0** (done, 2026-09-01) extracted and fixed the physics; **M1** is the game loop; **M2** is the surface-aware shot resolver (rollout). `tools/flight-lab.html` (moved from the repo root) is now a thin UI shell that imports the built `@mulligan/physics` + `@mulligan/shot-source` modules — it carries no physics of its own. Build it with `npm run build:tools`, then serve the repo root over HTTP (`npm run tools`, http://localhost:4173/tools/flight-lab.html — ES module imports are blocked over `file://` by browsers) after any physics/club change.
+
+`packages/physics` (zero dependencies, SI in/out — see its `types.ts` for the coordinate-frame contract):
+- Point-mass flight integration: drag + Magnus lift + gravity, semi-implicit Euler dt=0.004s (verified within 0.1% of converged; not worth a fancier integrator)
+- Constants: m=0.04593kg, d=0.04267m, ρ=1.225, K=ρA/2m — named in `constants.ts`, the only place unit conversions (mph/yd/ft/deg/rpm ↔ SI) happen
+- Spin ratio S=ωr/v; CL=min(0.34, 0.54·S^0.4); CD=min(0.34, 0.22+0.55·S); spin decay exp(−0.033t) — all 8 numbers live in `aero.ts` as an overridable `AeroParams`, not inline literals, so calibration is a data change, not a code change. **Still unretuned — no real range data yet.**
+- Spin axis is now built in the *launch frame* (perpendicular to the aim direction), not world frame — the old code inflated side angle ~11% on any shot with a non-zero start line. Lift magnitude is scaled by sinTheta (angle between spin axis and velocity), not applied at full strength regardless of angle.
+- Rollout was removed from the physics module entirely (`rollY`/`totalY` are gone). The integrator returns a complete `LandingState` (position, velocity, descent angle, remaining spin) and stops — rollout depends on the surface the ball lands on, which is M2's job, not the flight model's.
+- Twelve club presets (ball speed mph / launch° / spin rpm) now live in `@mulligan/shot-source`'s `clubs.ts`, the source of truth (supersedes the shorter list this file used to carry): Driver 150/12.5/2800, 3-wood 140/13.5/3800, 5-wood 132/14.5/4400, 5-hybrid 120/16/5000, 6-iron 112/17.5/6250, 7-iron 106/18.5/7100, 8-iron 100/20.75/7850, 9-iron 94/23/8600, PW 86/26.5/9300, GW 79/28.5/9700, SW 72/31/10200, LW 66/33.5/10500.
+- Golden regression values (straight-shot carry/apex/hang/descent per club) live in `packages/physics/tests/fixtures/golden.json`, not inline — they get deliberately replaced once real calibration data exists.
+- Calibration harness (`@mulligan/shot-source/calibration`) is built and tested but **empty** — `MEASUREMENTS` has no real range data yet. Run `npm run calibrate` once Mehul's real gapping numbers are in; it fits `AeroParams` via a from-scratch Nelder–Mead optimizer (weighted on carry/apex/descent, descent weighted heaviest since it's what actually disambiguates the CL/CD split) and prints a before/after table — it never overwrites `DEFAULT_AERO` automatically.
 - Design language: turf/scorecard aesthetic — sage background, deep fairway green, sand-amber for ball flight, Archivo typeface. Keep this direction.
 
-**Physics needs calibration against Mehul's real range numbers** (his honest 7i and driver carries). Expect to tune CL/CD. This is normal and expected.
+The `ShotEvent` the original brief described as a single type turned out not to be achievable as one type — the device physically can't measure club or spin, so it's now split:
+- `RawShotEvent` — exactly what the Pi transmits: `{ballSpeedMph, launchDeg, timestamp, startLineDeg?, spinRpm?, spinAxisDeg?}`. Everything after `timestamp` is optional because the CV/spin-estimation subsystems don't exist yet.
+- `ShotEvent` — what the game consumes: the same fields, all required, plus `clubId` and a `provenance` map (`measured` vs `estimated` per field) so the UI can be honest about what's real and the calibration harness knows which shots to trust.
+- `enrichShot(raw, clubId)` in `@mulligan/shot-source` fills the gap: spin defaults to the club profile's spin scaled by swing-speed ratio, spin axis and start line default to 0 (straight) until their measurement subsystems ship.
 
-## Next milestone: playable hole MVP ("v1 game loop")
+## Next milestone: M1 — playable hole game loop
 - Render a golf hole (2D top-down or stylized 2.5D — think Tiger Woods GBA, NOT 3D photorealism; 3D is explicitly out of scope for v1)
 - Loop: see hole + distance to pin → pick club in app → enter/receive launch data → shot renders → walk the hole shot by shot
 - Putting: auto-resolved or simple tap-timing minigame (nobody expects real putting at a range)
-- Manual/simulated shot entry stands in for the device until hardware exists (design a clean ShotEvent interface: {ballSpeedMph, launchDeg, spinRpm, spinAxisDeg, startLineDeg, clubId, timestamp} — the hardware's ONLY job later is to emit these)
+- `SimulatedShotSource` (club presets + realistic strike variance, producing `RawShotEvent`s) stands in for the device until hardware exists — not built yet, part of M1
 - Scoring vs par; then handicap, challenge modes, ghost multiplayer per the runway
+- M2 (after M1) adds the surface-aware shot resolver that turns a `LandingState` + lie into actual rollout — driver run-out vs. wedge stop, which the physics model deliberately no longer owns
 
 ## Tech stack (decided 2026-09-01, for v1 game)
 npm workspaces monorepo:
 ```
 Mulligan/
 ├── packages/
-│   ├── physics/       @mulligan/physics — pure TS, zero deps, the ball-flight model + club presets + calibration config
-│   └── shot-source/    @mulligan/shot-source — ShotEvent interface + SimulatedShotSource (depends on physics)
+│   ├── physics/       @mulligan/physics — pure TS, zero deps, the ball-flight model + calibration config
+│   └── shot-source/    @mulligan/shot-source — clubs, RawShotEvent/ShotEvent + enrichShot, the calibration harness, and (M1) SimulatedShotSource (depends on physics)
 └── apps/
     └── web/            @mulligan/web — Vite + React 18 + TS, canvas rendering for the hole/ball-flight view
 ```

@@ -1,0 +1,14 @@
+[
+  { "club": "driver", "ballSpeedMph": 150, "launchDeg": 12.50, "spinRpm": 2800, "carryYds": 224.44, "apexFt": 105, "hangS": 6.75, "descentDeg": 44.0 },
+  { "club": "3w", "ballSpeedMph": 140, "launchDeg": 13.50, "spinRpm": 3800, "carryYds": 204.60, "apexFt": 103, "hangS": 6.64, "descentDeg": 44.3 },
+  { "club": "5w", "ballSpeedMph": 132, "launchDeg": 14.50, "spinRpm": 4400, "carryYds": 190.20, "apexFt": 99, "hangS": 6.42, "descentDeg": 44.2 },
+  { "club": "5h", "ballSpeedMph": 120, "launchDeg": 16.00, "spinRpm": 5000, "carryYds": 170.79, "apexFt": 89, "hangS": 6.01, "descentDeg": 43.4 },
+  { "club": "6i", "ballSpeedMph": 112, "launchDeg": 17.50, "spinRpm": 6250, "carryYds": 158.58, "apexFt": 86, "hangS": 5.82, "descentDeg": 43.7 },
+  { "club": "7i", "ballSpeedMph": 106, "launchDeg": 18.50, "spinRpm": 7100, "carryYds": 148.70, "apexFt": 79, "hangS": 5.55, "descentDeg": 42.7 },
+  { "club": "8i", "ballSpeedMph": 100, "launchDeg": 20.75, "spinRpm": 7850, "carryYds": 138.77, "apexFt": 77, "hangS": 5.38, "descentDeg": 43.0 },
+  { "club": "9i", "ballSpeedMph": 94, "launchDeg": 23.00, "spinRpm": 8600, "carryYds": 128.45, "apexFt": 74, "hangS": 5.19, "descentDeg": 43.3 },
+  { "club": "pw", "ballSpeedMph": 86, "launchDeg": 26.50, "spinRpm": 9300, "carryYds": 114.21, "apexFt": 71, "hangS": 4.94, "descentDeg": 44.1 },
+  { "club": "gw", "ballSpeedMph": 79, "launchDeg": 28.50, "spinRpm": 9700, "carryYds": 101.36, "apexFt": 63, "hangS": 4.61, "descentDeg": 43.8 },
+  { "club": "sw", "ballSpeedMph": 72, "launchDeg": 31.00, "spinRpm": 10200, "carryYds": 88.35, "apexFt": 57, "hangS": 4.30, "descentDeg": 44.0 },
+  { "club": "lw", "ballSpeedMph": 66, "launchDeg": 33.50, "spinRpm": 10500, "carryYds": 77.18, "apexFt": 52, "hangS": 4.03, "descentDeg": 44.7 }
+]
