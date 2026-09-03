@@ -79,7 +79,7 @@ export function HoleCanvas(props: HoleCanvasProps) {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
 
-    let rafId: number;
+    let rafId = 0;
 
     function resize() {
       const dpr = window.devicePixelRatio || 1;
@@ -150,11 +150,31 @@ export function HoleCanvas(props: HoleCanvasProps) {
 
       rafId = requestAnimationFrame(frame);
     }
-    rafId = requestAnimationFrame(frame);
+
+    // A phone screen redrawing at 60fps forever -- including while the tab
+    // is backgrounded or the phone is asleep -- is a real battery cost for
+    // no visible benefit. Pause the loop entirely when hidden; one frame
+    // when it becomes visible again brings the view back up to date
+    // (camera/animation state may have changed underneath it while paused).
+    function startLoop() {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(frame);
+    }
+    function handleVisibilityChange() {
+      if (document.hidden) {
+        cancelAnimationFrame(rafId);
+      } else {
+        startLoop();
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    startLoop();
 
     return () => {
       cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
 
