@@ -91,3 +91,4 @@ Top picks: **Forecaddie** (a forecaddie literally watches where your ball goes; 
 - He values quick scannable references and clean, intentional design
 - Prefer small testable milestones over big-bang integration (see hardware ladder — apply the same philosophy to software)
 - This is a resume project + personal product + learning vehicle: when there's a choice, prefer the option with a better engineering story and genuine learning over the shortcut
+- **Never add Claude as a GitHub contributor/co-author.** No `Co-Authored-By: Claude ...` trailer (or similar) in commit messages — commits should show Mehul as sole author.
