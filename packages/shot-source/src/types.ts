@@ -9,7 +9,14 @@ export interface RawShotEvent {
   ballSpeedMph: number;
   launchDeg: number;
   timestamp: number;
-  /** From the phone-behind-ball CV subsystem; absent until that ships. */
+  /**
+   * Degrees, relative to the player's chosen aim line — NOT an absolute
+   * compass heading. Positive is right of aim. At the range every bay
+   * points the same physical direction, so the player aims in the app
+   * (`aimHeadingRad` in hole space) and the device only measures how far
+   * off *that* line the ball actually started. From the phone-behind-ball
+   * CV subsystem; absent until that ships.
+   */
   startLineDeg?: number;
   /** Real spin measurement is a v2+ stretch; absent for now. */
   spinRpm?: number;
@@ -25,6 +32,7 @@ export interface ShotEvent {
   launchDeg: number;
   spinRpm: number;
   spinAxisDeg: number;
+  /** Degrees, relative to the player's chosen aim line — see RawShotEvent. */
   startLineDeg: number;
   clubId: ClubId;
   timestamp: number;

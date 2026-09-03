@@ -5,3 +5,16 @@ export type { Measurement } from "./calibration/measurements";
 export { MEASUREMENTS } from "./calibration/measurements";
 export type { ClubResidual, FitResiduals } from "./calibration/fit";
 export { computeResiduals, fitAeroParams } from "./calibration/fit";
+
+export type { DispersionParams } from "./dispersion";
+export { DEFAULT_DISPERSION, PERFECT_DISPERSION, sampleStrikeQuality, simulateShot } from "./dispersion";
+export { mulberry32, gaussian } from "./rng";
+
+export type { ShotSource } from "./sources/ShotSource";
+export { BaseShotSource } from "./sources/ShotSource";
+export { ManualShotSource } from "./sources/ManualShotSource";
+export { SimulatedShotSource } from "./sources/SimulatedShotSource";
+export { ReplayShotSource } from "./sources/ReplayShotSource";
+
+export type { ShotLogEntry, KeyValueStore } from "./log/ShotLog";
+export { ShotLog, createMemoryStore } from "./log/ShotLog";
