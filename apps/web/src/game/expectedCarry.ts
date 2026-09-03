@@ -1,9 +1,9 @@
 import { degToRad, metersToYards, mphToMps, rpmToRadPerSec, simulate } from "@mulligan/physics";
-import { DEFAULT_DISPERSION, findClub, mulberry32, simulateShot, type ClubId } from "@mulligan/shot-source";
+import { CLUBS, DEFAULT_DISPERSION, mulberry32, simulateShot, type ClubId, type ClubProfile } from "@mulligan/shot-source";
 
 const SAMPLES = 101; // odd, so the middle index is a clean median, no averaging of two values
 
-/** Stable per-club seed so the displayed median doesn't jitter between renders or reloads. */
+/** Stable per-club seed so the table is deterministic across reloads. */
 function seedFromClubId(clubId: string): number {
   let hash = 0;
   for (let i = 0; i < clubId.length; i++) {
@@ -12,14 +12,8 @@ function seedFromClubId(clubId: string): number {
   return hash >>> 0;
 }
 
-/**
- * Median carry across DEFAULT_DISPERSION's simulated shots for this club --
- * NOT the noiseless preset (which is optimistic; the median simulated
- * drive carries noticeably less than the preset's exact 224.4 for driver).
- */
-export function expectedCarryYds(clubId: ClubId): number {
-  const club = findClub(clubId);
-  const rng = mulberry32(seedFromClubId(clubId));
+function medianCarryYds(club: ClubProfile): number {
+  const rng = mulberry32(seedFromClubId(club.id));
 
   const carries: number[] = [];
   for (let i = 0; i < SAMPLES; i++) {
@@ -36,4 +30,22 @@ export function expectedCarryYds(clubId: ClubId): number {
 
   carries.sort((a, b) => a - b);
   return carries[Math.floor(carries.length / 2)]!;
+}
+
+// The result depends only on club id and is deterministic (seeded), so the
+// whole table is computed once here, at module load, instead of per-club
+// on demand -- 101 simulations/club (1.56M integration steps total across
+// the bag) is cheap once at startup but is not free enough to redo on a
+// render or a club selection.
+const EXPECTED_CARRY_TABLE: Record<ClubId, number> = Object.fromEntries(
+  CLUBS.map((club) => [club.id, medianCarryYds(club)]),
+) as Record<ClubId, number>;
+
+/**
+ * Median carry across DEFAULT_DISPERSION's simulated shots for this club --
+ * NOT the noiseless preset (which is optimistic; the median simulated
+ * drive carries noticeably less than the preset's exact 224.4 for driver).
+ */
+export function expectedCarryYds(clubId: ClubId): number {
+  return EXPECTED_CARRY_TABLE[clubId];
 }

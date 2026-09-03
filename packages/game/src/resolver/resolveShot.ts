@@ -20,6 +20,15 @@ export interface ShotResult {
   landingSurface: SurfaceType;
   restSurface: SurfaceType;
   carryYds: number;
+  /**
+   * carryYds + the M1 rollout placeholder, as a scalar -- the same
+   * "carry / total" convention a launch monitor uses. NOT the straight-line
+   * distance from ballPos to `rest`: `rest` places rollout along the ball's
+   * actual landing direction (see resolveShot), so for a curving shot the
+   * two are measured slightly differently and won't exactly agree (a
+   * fraction of a yard today; more once M2's rollout has real magnitude).
+   * Fine for the HUD; don't use this to back out `rest`.
+   */
   totalYds: number;
 }
 
@@ -46,7 +55,7 @@ export function resolveShot(hole: Hole, ballPos: Point2, aimHeadingRad: number, 
   const carryYds = metersToYards(trajectory.carry);
   const lateralYds = metersToYards(trajectory.lateral);
   const rolloutYds = estimateRollout(trajectory.landing);
-  const totalYds = carryYds + rolloutYds; // scalar carry+roll distance, same convention as a launch monitor's "total"
+  const totalYds = carryYds + rolloutYds; // scalar carry+roll, launch-monitor convention -- see ShotResult.totalYds doc
 
   const landing = localToHole(ballPos, aimHeadingRad, { d: carryYds, l: lateralYds });
 

@@ -61,9 +61,67 @@ function customShot(overrides: Partial<ShotEvent>): ShotEvent {
   };
 }
 
+/** A hole that's fairway everywhere within a generous span -- for finding out where a shot actually lands/rests. */
+function fairwayEverywhereHole(): Hole {
+  return {
+    id: "probe",
+    name: "Probe (fairway everywhere)",
+    par: 4,
+    tee: { x: 0, y: 0 },
+    pin: { x: 0, y: 1000 },
+    surfaces: [
+      {
+        type: "fairway",
+        points: [
+          { x: -100, y: -50 },
+          { x: 100, y: -50 },
+          { x: 100, y: 1000 },
+          { x: -100, y: 1000 },
+        ],
+      },
+    ],
+    bounds: { minX: -200, maxX: 200, minY: -100, maxY: 1100 },
+  };
+}
+
+/** Fairway up to boundaryY, green from boundaryY onward -- both generously wide/deep. */
+function fairwayThenGreenHole(boundaryY: number): Hole {
+  return {
+    id: "boundary-test",
+    name: "Boundary test",
+    par: 4,
+    tee: { x: 0, y: 0 },
+    pin: { x: 0, y: boundaryY + 100 },
+    surfaces: [
+      {
+        type: "fairway",
+        points: [
+          { x: -100, y: -50 },
+          { x: 100, y: -50 },
+          { x: 100, y: boundaryY },
+          { x: -100, y: boundaryY },
+        ],
+      },
+      {
+        type: "green",
+        points: [
+          { x: -100, y: boundaryY },
+          { x: 100, y: boundaryY },
+          { x: 100, y: boundaryY + 100 },
+          { x: -100, y: boundaryY + 100 },
+        ],
+      },
+    ],
+    bounds: { minX: -200, maxX: 200, minY: -100, maxY: boundaryY + 200 },
+  };
+}
+
 // A low, hot launch minimizes descent angle and maximizes landing speed --
 // both increase the M1 rollout placeholder -- giving a large, predictable
-// roll (~13 yards) instead of the ~3-5 yards a normal club produces.
+// roll (double-digit yards, versus the few yards a normal club produces
+// today). Exactly how far it carries depends on AeroParams, which are
+// getting calibrated soon -- tests below derive boundaries from this
+// shot's actual resolved landing/rest rather than hardcoding a distance.
 const BIG_ROLLOUT_SHOT = customShot({ launchDeg: 6, spinRpm: 1200 });
 
 describe("resolveShot", () => {
@@ -111,37 +169,19 @@ describe("resolveShot", () => {
   });
 
   it("rest can be on a different surface than landing, when rollout carries it across a boundary", () => {
-    // A fairway/green boundary placed 0.7 yd past this shot's carry, with a
-    // ~13 yd rollout (see BIG_ROLLOUT_SHOT) -- landing must be fairway,
-    // rest must be green, not just "both defined."
-    const hole: Hole = {
-      id: "boundary-test",
-      name: "Boundary test",
-      par: 4,
-      tee: { x: 0, y: 0 },
-      pin: { x: 0, y: 220 },
-      surfaces: [
-        {
-          type: "fairway",
-          points: [
-            { x: -30, y: 0 },
-            { x: 30, y: 0 },
-            { x: 30, y: 195 },
-            { x: -30, y: 195 },
-          ],
-        },
-        {
-          type: "green",
-          points: [
-            { x: -30, y: 195 },
-            { x: 30, y: 195 },
-            { x: 30, y: 230 },
-            { x: -30, y: 230 },
-          ],
-        },
-      ],
-      bounds: { minX: -50, maxX: 50, minY: -10, maxY: 250 },
-    };
+    // The boundary is derived from where this shot actually lands and
+    // rests, not hardcoded -- a hardcoded y pinned to today's carry would
+    // silently stop testing anything once AeroParams get calibrated and
+    // carry distances shift by 10-20 yards. Resolve once against a
+    // fairway-everywhere hole to find the real landing/rest, then place the
+    // fairway/green boundary exactly halfway between them.
+    const probeHole = fairwayEverywhereHole();
+    const probe = resolveShot(probeHole, { x: 0, y: 0 }, 0, BIG_ROLLOUT_SHOT);
+    expect(probe.landingSurface).toBe("fairway");
+    expect(probe.rest.y).toBeGreaterThan(probe.landing.y); // confirms there's an actual rollout to place a boundary inside
+
+    const boundaryY = (probe.landing.y + probe.rest.y) / 2;
+    const hole = fairwayThenGreenHole(boundaryY);
 
     const result = resolveShot(hole, { x: 0, y: 0 }, 0, BIG_ROLLOUT_SHOT);
 

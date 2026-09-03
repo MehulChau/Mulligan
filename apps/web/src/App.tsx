@@ -41,7 +41,9 @@ export default function App() {
   const currentSurface = useMemo(() => surfaceAt(state.hole, state.ballPos), [state.hole, state.ballPos]);
 
   const selectedClub = findClub(state.selectedClubId);
-  const clubExpectedCarry = useMemo(() => expectedCarryYds(state.selectedClubId), [state.selectedClubId]);
+  // expectedCarryYds is an O(1) lookup into a table precomputed once at
+  // module load (see game/expectedCarry.ts) -- no memoization needed here.
+  const clubExpectedCarry = expectedCarryYds(state.selectedClubId);
 
   const previousPaths = useMemo(
     () => state.shotHistory.map((entry) => entry.result.path2d),
