@@ -1,6 +1,14 @@
 import { degToRad } from "@mulligan/physics";
 import { HOLE_1, headingToward, resolveShot, surfaceAt } from "@mulligan/game";
-import { CLUBS, ShotLog, SimulatedShotSource, enrichShot, findClub } from "@mulligan/shot-source";
+import {
+  CLUBS,
+  ManualShotSource,
+  ShotLog,
+  SimulatedShotSource,
+  enrichShot,
+  findClub,
+  type RawShotEvent,
+} from "@mulligan/shot-source";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { expectedCarryYds } from "./game/expectedCarry";
 import { HoleCanvas } from "./game/HoleCanvas";
@@ -8,24 +16,34 @@ import { createInitialState, gameReducer, type ShotHistoryEntry } from "./game/g
 import { AimSlider } from "./ui/AimSlider";
 import { ClubPicker } from "./ui/ClubPicker";
 import { Hud } from "./ui/Hud";
+import { ManualEntryPanel } from "./ui/ManualEntryPanel";
+import { SourceModeToggle } from "./ui/SourceModeToggle";
 import "./App.css";
 
 const HOLE = HOLE_1;
+const INITIAL_CLUB = "7i";
 
 export default function App() {
-  const [state, dispatch] = useReducer(gameReducer, undefined, () => createInitialState(HOLE, "7i"));
+  const [state, dispatch] = useReducer(gameReducer, undefined, () => createInitialState(HOLE, INITIAL_CLUB));
 
-  const shotSourceRef = useRef<SimulatedShotSource | null>(null);
+  const simulatedRef = useRef<SimulatedShotSource | null>(null);
+  const manualRef = useRef<ManualShotSource | null>(null);
   const shotLogRef = useRef<ShotLog | null>(null);
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
-  const [sourceReady, setSourceReady] = useState(false);
+  const [sourcesReady, setSourcesReady] = useState(false);
+  const [swingError, setSwingError] = useState<string | null>(null);
 
   useEffect(() => {
-    const source = new SimulatedShotSource();
-    shotSourceRef.current = source;
+    const simulated = new SimulatedShotSource();
+    const manual = new ManualShotSource();
+    simulatedRef.current = simulated;
+    manualRef.current = manual;
     shotLogRef.current = new ShotLog();
-    source.start().then(() => setSourceReady(true));
-    return () => source.stop();
+    Promise.all([simulated.start(), manual.start()]).then(() => setSourcesReady(true));
+    return () => {
+      simulated.stop();
+      manual.stop();
+    };
   }, []);
 
   const aimHeadingRad = useMemo(
@@ -45,36 +63,59 @@ export default function App() {
   // module load (see game/expectedCarry.ts) -- no memoization needed here.
   const clubExpectedCarry = expectedCarryYds(state.selectedClubId);
 
-  const previousPaths = useMemo(
-    () => state.shotHistory.map((entry) => entry.result.path2d),
-    [state.shotHistory],
-  );
+  const previousPaths = useMemo(() => state.shotHistory.map((entry) => entry.result.path2d), [state.shotHistory]);
+  const previousRestSpots = useMemo(() => state.shotHistory.map((entry) => entry.result.rest), [state.shotHistory]);
 
   const lastEntry: ShotHistoryEntry | undefined = state.shotHistory[state.shotHistory.length - 1];
 
   function handleSwing() {
-    const source = shotSourceRef.current;
     const log = shotLogRef.current;
-    if (!source || !log || state.pendingShot || state.status !== "playing") return;
+    if (!log || state.pendingShot || state.status !== "playing") return;
 
-    const raw = source.hit(state.selectedClubId);
-    const shot = enrichShot(raw, state.selectedClubId);
-    const result = resolveShot(state.hole, state.ballPos, aimHeadingRad, shot);
-    const entry: ShotHistoryEntry = { clubId: state.selectedClubId, raw, shot, result };
+    try {
+      let raw: RawShotEvent;
+      if (state.sourceMode === "manual") {
+        const manual = manualRef.current;
+        if (!manual) return;
+        raw = { ...state.manualValues, timestamp: Date.now() };
+        manual.emit(raw);
+      } else {
+        const simulated = simulatedRef.current;
+        if (!simulated) return;
+        raw = simulated.hit(state.selectedClubId);
+      }
 
-    dispatch({ type: "SWING_RESOLVED", entry });
-    log.append({
-      sessionId: sessionIdRef.current,
-      timestamp: raw.timestamp,
-      raw,
-      shot,
-      rest: result.rest,
-      landingSurface: result.landingSurface,
-      restSurface: result.restSurface,
-    });
+      const shot = enrichShot(raw, state.selectedClubId);
+      const result = resolveShot(state.hole, state.ballPos, aimHeadingRad, shot);
+      const entry: ShotHistoryEntry = { clubId: state.selectedClubId, raw, shot, result };
+
+      setSwingError(null);
+      dispatch({ type: "SWING_RESOLVED", entry });
+      log.append({
+        sessionId: sessionIdRef.current,
+        timestamp: raw.timestamp,
+        raw,
+        shot,
+        rest: result.rest,
+        landingSurface: result.landingSurface,
+        restSurface: result.restSurface,
+      });
+    } catch (err) {
+      // A game action must never crash the whole app -- surface it and let
+      // the player try a different club/aim/manual value instead.
+      setSwingError(err instanceof Error ? err.message : "That shot couldn't be resolved. Try different numbers.");
+    }
   }
 
-  const canSwing = sourceReady && !state.pendingShot && state.status === "playing";
+  function handlePlayAgain() {
+    dispatch({ type: "RESET", hole: HOLE, clubId: INITIAL_CLUB });
+    setSwingError(null);
+    sessionIdRef.current = `session-${Date.now()}`;
+  }
+
+  const animating = state.pendingShot !== null;
+  const canSwing = sourcesReady && !animating && state.status === "playing";
+  const controlsDisabled = animating || state.status !== "playing";
 
   return (
     <div className="app">
@@ -104,6 +145,7 @@ export default function App() {
           ballPos={state.ballPos}
           aimHeadingRad={aimHeadingRad}
           previousPaths={previousPaths}
+          previousRestSpots={previousRestSpots}
           pendingShot={state.pendingShot?.result ?? null}
           skipAnimation={state.skipAnimation}
           onShotSettled={() => dispatch({ type: "SHOT_SETTLED" })}
@@ -112,11 +154,38 @@ export default function App() {
 
       {state.status === "playing" && (
         <div className="controls">
-          <AimSlider aimOffsetDeg={state.aimOffsetDeg} onChange={(deg) => dispatch({ type: "SET_AIM_OFFSET_DEG", deg })} />
-          <ClubPicker clubs={CLUBS} selectedClubId={state.selectedClubId} onSelect={(clubId) => dispatch({ type: "SELECT_CLUB", clubId })} />
+          <SourceModeToggle
+            mode={state.sourceMode}
+            disabled={controlsDisabled}
+            onChange={(mode) => dispatch({ type: "SET_SOURCE_MODE", mode })}
+          />
+
+          <AimSlider
+            aimOffsetDeg={state.aimOffsetDeg}
+            disabled={controlsDisabled}
+            onChange={(deg) => dispatch({ type: "SET_AIM_OFFSET_DEG", deg })}
+          />
+
+          <ClubPicker
+            clubs={CLUBS}
+            selectedClubId={state.selectedClubId}
+            disabled={controlsDisabled}
+            onSelect={(clubId) => dispatch({ type: "SELECT_CLUB", clubId })}
+          />
+
+          {state.sourceMode === "manual" && (
+            <ManualEntryPanel
+              values={state.manualValues}
+              disabled={controlsDisabled}
+              onChange={(field, value) => dispatch({ type: "SET_MANUAL_VALUE", field, value })}
+            />
+          )}
+
+          {swingError && <div className="swing-error">{swingError}</div>}
+
           <div className="hitrow">
             <button type="button" className="hit" disabled={!canSwing} onClick={handleSwing}>
-              Swing
+              {sourcesReady ? "Swing" : "Loading…"}
             </button>
             <label className="skip-toggle">
               <input
@@ -127,6 +196,14 @@ export default function App() {
               Skip animation
             </label>
           </div>
+        </div>
+      )}
+
+      {state.status === "on-green" && (
+        <div className="controls">
+          <button type="button" className="hit" onClick={handlePlayAgain}>
+            Play again
+          </button>
         </div>
       )}
     </div>

@@ -1,8 +1,15 @@
-import type { Hole, Point2 } from "@mulligan/game";
+import type { Point2 } from "@mulligan/game";
+
+export interface Bounds {
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
+}
 
 /**
- * One static fitted view — no pan/zoom in M1. Fits the hole's bounds into
- * the viewport preserving aspect ratio, pin at the top, tee at the bottom.
+ * One static fitted view — no pan/zoom in M1. Fits `bounds` into the
+ * viewport preserving aspect ratio, pin at the top, tee at the bottom.
  * yardsToScreen/screenToYards are the ONLY place this transform happens.
  */
 export interface Camera {
@@ -11,9 +18,9 @@ export interface Camera {
   offsetY: number;
 }
 
-export function computeCamera(hole: Hole, viewportWidth: number, viewportHeight: number, marginPx = 28): Camera {
-  const holeWidth = hole.bounds.maxX - hole.bounds.minX;
-  const holeHeight = hole.bounds.maxY - hole.bounds.minY;
+export function computeCamera(bounds: Bounds, viewportWidth: number, viewportHeight: number, marginPx = 28): Camera {
+  const holeWidth = bounds.maxX - bounds.minX;
+  const holeHeight = bounds.maxY - bounds.minY;
   const usableW = Math.max(1, viewportWidth - marginPx * 2);
   const usableH = Math.max(1, viewportHeight - marginPx * 2);
   const scale = Math.min(usableW / holeWidth, usableH / holeHeight);
@@ -25,9 +32,28 @@ export function computeCamera(hole: Hole, viewportWidth: number, viewportHeight:
 
   return {
     scale,
-    offsetX: extraX - hole.bounds.minX * scale,
-    offsetY: extraY + hole.bounds.maxY * scale,
+    offsetX: extraX - bounds.minX * scale,
+    offsetY: extraY + bounds.maxY * scale,
   };
+}
+
+/**
+ * Grows `bounds` (a hole's authored bounds) just enough to keep every point
+ * in `points` inside frame -- a wayward shot (wild dispersion, or a manual
+ * entry with an extreme spin axis) can land outside the hole's authored
+ * bounds, and the ball must never render off-canvas. Still one static
+ * fitted view per frame, just computed to include what actually needs to
+ * be visible instead of only the hole's nominal extent.
+ */
+export function effectiveBounds(bounds: Bounds, points: Point2[], paddingYds = 8): Bounds {
+  let { minX, maxX, minY, maxY } = bounds;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x - paddingYds;
+    if (p.x > maxX) maxX = p.x + paddingYds;
+    if (p.y < minY) minY = p.y - paddingYds;
+    if (p.y > maxY) maxY = p.y + paddingYds;
+  }
+  return { minX, maxX, minY, maxY };
 }
 
 export function yardsToScreen(camera: Camera, p: Point2): Point2 {

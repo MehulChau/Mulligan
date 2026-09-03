@@ -1,11 +1,12 @@
 export interface AimSliderProps {
   aimOffsetDeg: number;
+  disabled?: boolean;
   onChange: (deg: number) => void;
 }
 
 const RANGE_DEG = 30;
 
-export function AimSlider({ aimOffsetDeg, onChange }: AimSliderProps) {
+export function AimSlider({ aimOffsetDeg, disabled, onChange }: AimSliderProps) {
   const label =
     aimOffsetDeg === 0
       ? "Aimed at pin"
@@ -22,6 +23,7 @@ export function AimSlider({ aimOffsetDeg, onChange }: AimSliderProps) {
         max={RANGE_DEG}
         step={1}
         value={aimOffsetDeg}
+        disabled={disabled}
         onChange={(e) => onChange(Number(e.target.value))}
       />
     </div>

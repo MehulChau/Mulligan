@@ -9,6 +9,7 @@
   --line: #d8dfd3;
   --chipbg: #e9efe6;
   --track: #cbd5c6;
+  --danger: #b3432b;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -22,6 +23,7 @@
     --line: #273129;
     --chipbg: #1e2822;
     --track: #2c382f;
+    --danger: #e08066;
   }
 }
 :root[data-theme="dark"] {
@@ -35,23 +37,39 @@
   --line: #273129;
   --chipbg: #1e2822;
   --track: #2c382f;
+  --danger: #e08066;
 }
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
-html,
-body,
-#root {
+html {
+  /* dvh tracks the *visible* viewport on mobile (accounts for browser
+     chrome showing/hiding on scroll); 100% is the fallback for browsers
+     that don't support it yet. */
   height: 100%;
-  margin: 0;
+  overscroll-behavior: none; /* no pull-to-refresh / rubber-band bounce fighting the game */
 }
 
 body {
+  height: 100%;
+  height: 100dvh;
+  margin: 0;
+  overscroll-behavior: none;
   background: var(--bg);
   color: var(--ink);
   font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+  /* this is a game screen, not a document -- no accidental text selection
+     or iOS "Copy/Look Up" callouts on a long-press of a chip or button */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+#root {
+  height: 100%;
 }
 
 .app {
@@ -60,13 +78,16 @@ body {
   height: 100%;
   max-width: 480px;
   margin: 0 auto;
-  padding: 12px 12px 0;
+  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+    max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  overflow: hidden;
 }
 
 .app-header {
   display: flex;
   align-items: baseline;
   margin-bottom: 6px;
+  flex-shrink: 0;
 }
 .app-header h1 {
   font-size: 19px;
@@ -85,6 +106,7 @@ body {
   border-radius: 12px;
   padding: 8px 10px;
   margin-bottom: 8px;
+  flex-shrink: 0;
 }
 .hud-headline {
   font-size: 18px;
@@ -144,8 +166,11 @@ body {
 }
 
 .canvas-wrap {
-  flex: 1;
-  min-height: 0;
+  flex: 1 1 auto;
+  /* The game view is the whole point of the screen -- it must never get
+     crushed by a tall control panel (e.g. the five manual-entry sliders).
+     Controls scroll internally instead; the canvas keeps this floor. */
+  min-height: 200px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -154,27 +179,85 @@ body {
 }
 
 .controls {
-  padding-bottom: 12px;
+  flex-shrink: 0;
+  max-height: 48vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 4px;
+}
+
+.mode-toggle {
+  display: flex;
+  background: var(--chipbg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 10px;
+}
+.mode-tab {
+  flex: 1;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 8px 0;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sub);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.mode-tab.on {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.mode-tab:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .aim-ctl {
   margin-bottom: 8px;
 }
-.aim-ctl label {
+.ctl label {
   display: flex;
   justify-content: space-between;
   font-size: 12.5px;
   font-weight: 600;
   margin-bottom: 2px;
 }
-.aim-ctl output {
+.ctl output {
   font-weight: 800;
   color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+.ctl small {
+  display: block;
+  font-size: 10.5px;
+  color: var(--sub);
+  margin-top: -1px;
 }
 input[type="range"] {
   width: 100%;
   accent-color: var(--green);
-  height: 24px;
+  height: 30px;
+  touch-action: manipulation;
+}
+input[type="range"]:disabled {
+  opacity: 0.55;
+}
+
+.manual-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 12px 4px;
+  margin-bottom: 10px;
+}
+.manual-panel .slider-ctl {
+  margin-bottom: 10px;
 }
 
 .clubs {
@@ -187,7 +270,8 @@ input[type="range"] {
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 600;
-  padding: 8px 11px;
+  padding: 10px 11px;
+  min-height: 40px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--chipbg);
@@ -195,17 +279,41 @@ input[type="range"] {
   cursor: pointer;
   flex: 1 1 auto;
   min-width: 64px;
+  touch-action: manipulation;
 }
 .club.on {
   background: var(--green);
   border-color: var(--green);
   color: #fff;
 }
+.club:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.swing-error {
+  background: color-mix(in srgb, var(--danger) 12%, var(--panel));
+  border: 1px solid var(--danger);
+  color: var(--danger);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
 
 .hitrow {
   display: flex;
   align-items: center;
   gap: 12px;
+  /* Stays reachable with one tap even when Manual mode's sliders make the
+     controls area tall enough to scroll -- swing should never require a
+     scroll-then-tap. */
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  padding-top: 8px;
+  margin-top: -2px;
 }
 .hit {
   font-family: inherit;
@@ -216,9 +324,11 @@ input[type="range"] {
   color: #fff;
   border: none;
   border-radius: 12px;
-  padding: 14px 0;
+  padding: 15px 0;
+  min-height: 48px;
   flex: 1;
   cursor: pointer;
+  touch-action: manipulation;
 }
 .hit:disabled {
   opacity: 0.5;
@@ -232,6 +342,48 @@ input[type="range"] {
   color: var(--sub);
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   white-space: nowrap;
+  padding: 8px 2px;
+  touch-action: manipulation;
+}
+.skip-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--green);
+}
+
+/* Short phones (SE-class, or a phone with the keyboard/browser chrome
+   eating vertical space): trim the least essential vertical costs first
+   rather than letting the canvas get squeezed to nothing. */
+@media (max-height: 620px) {
+  .canvas-wrap {
+    min-height: 140px;
+  }
+  .controls {
+    max-height: 52vh;
+  }
+  .app-header {
+    margin-bottom: 4px;
+  }
+  .hud {
+    padding: 6px 10px;
+    margin-bottom: 6px;
+  }
+  .hud-lastshot {
+    margin-top: 4px;
+    padding-top: 4px;
+  }
+  .mode-toggle {
+    margin-bottom: 6px;
+  }
+  .aim-ctl {
+    margin-bottom: 4px;
+  }
+  .clubs {
+    margin-bottom: 6px;
+  }
+  .manual-panel .slider-ctl {
+    margin-bottom: 6px;
+  }
 }
