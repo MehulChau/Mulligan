@@ -7,9 +7,5 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src"],
-  "references": [
-    { "path": "../../packages/physics" },
-    { "path": "../../packages/shot-source" }
-  ]
+  "include": ["src"]
 }

@@ -5,7 +5,7 @@ export type { Point2, SurfaceType, SurfacePolygon, Hole } from "./types";
 export { pointInPolygon, surfaceAt } from "./surface";
 
 export type { LocalOffset } from "./resolver/rotate";
-export { localToHole, holeToLocal } from "./resolver/rotate";
+export { localToHole, holeToLocal, headingToward } from "./resolver/rotate";
 export { estimateRollout } from "./resolver/rollout";
 export type { ShotResult } from "./resolver/resolveShot";
 export { resolveShot } from "./resolver/resolveShot";

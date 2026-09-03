@@ -40,8 +40,10 @@ Status: parts being ordered; hardware is NOT the current workstream.
 3. **The app / game** ← CURRENT WORKSTREAM. See below.
 4. **Feature runway**: challenge modes, async multiplayer (ghost shots), daily challenge, GSPro connect API integration, shot classification, practice/proximity games.
 
-## Current state: M0 done — physics extracted into a pure, tested TS module
-The playable-hole MVP is being built in labeled milestones: **M0** (done, 2026-09-01) extracted and fixed the physics; **M1** is the game loop; **M2** is the surface-aware shot resolver (rollout). `tools/flight-lab.html` (moved from the repo root) is now a thin UI shell that imports the built `@mulligan/physics` + `@mulligan/shot-source` modules — it carries no physics of its own. Build it with `npm run build:tools`, then serve the repo root over HTTP (`npm run tools`, http://localhost:4173/tools/flight-lab.html — ES module imports are blocked over `file://` by browsers) after any physics/club change.
+## Current state: M1 done — one playable hole, no putting/scoring yet
+The playable-hole MVP is being built in labeled milestones: **M0** (done, 2026-09-01) extracted and fixed the physics; **M1** (done, 2026-09-02) is one playable hole — pick a club, swing, watch the ball fly and come to rest, repeat until the green; **M2** is the surface-aware shot resolver (real rollout, lie penalties, putting, scoring). `tools/flight-lab.html` (moved from the repo root) is a thin UI shell that imports the built `@mulligan/physics` + `@mulligan/shot-source` modules — it carries no physics of its own. Build it with `npm run build:tools`, then serve the repo root over HTTP (`npm run tools`, http://localhost:4173/tools/flight-lab.html — ES module imports are blocked over `file://` by browsers) after any physics/club change.
+
+Run the actual game: `npm run dev` (from repo root or `apps/web`), open the printed localhost URL. One hole, `SimulatedShotSource` stands in for hardware, skip-animation checkbox for fast iteration.
 
 `packages/physics` (zero dependencies, SI in/out — see its `types.ts` for the coordinate-frame contract):
 - Point-mass flight integration: drag + Magnus lift + gravity, semi-implicit Euler dt=0.004s (verified within 0.1% of converged; not worth a fancier integrator)
@@ -62,18 +64,18 @@ The `ShotEvent` the original brief described as a single type turned out not to 
 ## Milestone split — M1 vs M2 (revised 2026-09-02)
 The original brief lumped "the game loop" and "the surface-aware shot resolver" into one M1. That packed too much into one milestone; split as follows. The distinction that matters: **M1 proves the geometry and the seam. M2 makes it a game.**
 
-### M1 (current workstream): hole model, renderer, shot sources, shot placement
-- **Hole data model** — holes are data, not code: a `Hole` is a JSON file (`packages/game/src/holes/*.json`) so authoring new holes never needs a code change. Hole space is its own 2D yards coordinate frame, origin at the tee, `x` lateral (+right), `y` downrange (+toward pin) — deliberately different from the physics module's frame (x downrange, y up, z lateral); the conversion between them is isolated to one function. Surface lookup (`fairway`/`green`/`rough`/`bunker`/`water`/`tee`/`out`) is point-in-polygon (ray casting, hand-rolled, no dependency), topmost-painted-surface-wins. `HOLE_1` ("The Bend") is the one hole for this milestone: a 400-yard dogleg-right par 4.
-- Top-down renderer for that hole
-- The `ShotSource` seam (the interface hardware will eventually implement) and a simulated implementation
-- Shot placement: turning a physics `Trajectory` into a new ball position on the hole
-- Rollout is a deliberate, centralized placeholder (not the real per-surface model). Lie is detected and displayed in the HUD but does not affect the shot.
-- Non-goals for M1: no putting, no scoring, no par tracking, no "hole complete" state (reaching the green ends the demo); no lie penalties; no multiple holes/course; no persistence beyond in-memory session state; no wind/elevation/slope; `@mulligan/physics` is not touched and `AeroParams` is not retuned (still no real range data).
+### M1 (done): hole model, renderer, shot sources, shot placement
+- **Hole data model** — holes are data, not code: a `Hole` is a JSON file (`packages/game/src/holes/*.json`) so authoring new holes never needs a code change. Hole space is its own 2D yards coordinate frame, origin at the tee, `x` lateral (+right), `y` downrange (+toward pin) — deliberately different from the physics module's frame (x downrange, y up, z lateral); the conversion between them is isolated to `localToHole`/`holeToLocal` in `packages/game/src/resolver/rotate.ts`. Surface lookup (`fairway`/`green`/`rough`/`bunker`/`water`/`tee`/`out`) is point-in-polygon (ray casting, hand-rolled, no dependency), topmost-painted-surface-wins. `HOLE_1` ("The Bend") is the one hole for this milestone: a 400-yard dogleg-right par 4.
+- **`ShotSource` seam** (`packages/shot-source/src/sources/`) — the interface hardware will eventually implement (`start`/`stop`/`onShot`), with three implementations: `ManualShotSource` (explicit numbers), `SimulatedShotSource` (dispersed shots per club, seeded/deterministic via a tunable `DispersionParams`; `PERFECT_DISPERSION` gives exact-preset shots for tests), and `ReplayShotSource` (replays a logged session back). An append-only `ShotLog` (localStorage, in-memory fallback) records every raw + enriched shot and where it ended up — built now, before real hardware needs it, since a reproducible bad shot is worth a lot when debugging later.
+- **`startLineDeg`/`spinAxisDeg` are relative to the player's chosen aim heading, not an absolute compass direction** — documented on `RawShotEvent`/`ShotEvent` directly. Every bay at the range points the same physical way; the player aims in the app, the device only measures deviation from that.
+- **Shot placement** (`packages/game/src/resolver/resolveShot.ts`) — runs the physics simulation, rotates the result into hole space, and reports both the landing point (carry) and rest point. Rollout is `estimateRollout()` (`resolver/rollout.ts`), a deliberately isolated, surface-agnostic placeholder — not the real per-surface model; M2 replaces it in that one file. Lie is detected (`landingSurface`/`restSurface`) and shown in the HUD but does not affect the shot.
+- **Renderer + loop** (`apps/web`) — plain `<canvas>`, one static fitted camera (pin at top, tee at bottom, no pan/zoom), stylized top-down (Tiger Woods GBA energy, not 3D). React (`useReducer`) owns game state; the canvas owns drawing + the ~1.2s flight animation (with a skip-animation mode for fast iteration) and a short roll-to-rest. Aim is a slider (degrees off "aimed at pin"); 12 club chips; HUD shows distance/lie/shot number/expected carry plus, for the last shot, carry/total and per-field measured-vs-estimated provenance. Reaching the green shows "on the green in N" and stops — no putting.
+- Non-goals honored: no putting, no scoring, no par tracking, no "hole complete" state beyond the green message; no lie penalties; no multiple holes/course; no persistence beyond the shot log; no wind/elevation/slope; `@mulligan/physics` was not touched and `AeroParams` was not retuned (still no real range data).
 
-### M2 (after M1): the surface-aware resolver
-Real rollout per surface (driver run-out vs. wedge stop — using the `LandingState` the physics module already returns), lie affecting club availability, putting, scoring vs par, hole completion.
+### M2 (next): the surface-aware resolver
+Real rollout per surface (driver run-out vs. wedge stop — using the `LandingState` the physics module already returns, replacing `estimateRollout`), lie affecting club availability, putting, scoring vs par, hole completion.
 
-`SimulatedShotSource` (club presets + realistic strike variance) is part of M1's shot-source seam work. Handicap, challenge modes, and ghost multiplayer stay in the feature runway, after M2.
+Handicap, challenge modes, and ghost multiplayer stay in the feature runway, after M2.
 
 ## Tech stack (decided 2026-09-01, for v1 game)
 npm workspaces monorepo:
@@ -88,7 +90,7 @@ Mulligan/
 ```
 - **apps/web**: Vite + React + TypeScript, plain `<canvas>` for game rendering (no game-engine library) — matches flight-lab.html's approach, keeps deps minimal. React owns the HUD/club-picker/scorecard UI, which is the part most likely to carry over to React Native later.
 - **packages/physics** and **packages/shot-source** are plain TS with no React/browser APIs — this is what lets the same math run in the web app, a future backend, and tests unchanged. When phone (React Native/Expo) or the Pi backend arrive, they become new consumers of these same packages, not rewrites.
-- Package manager: npm (workspaces). Test runner: Vitest. TypeScript strict mode everywhere, project references wire the packages together for typechecking.
+- Package manager: npm (workspaces). Test runner: Vitest. TypeScript strict mode everywhere. Packages resolve each other directly via source (package.json `main`/`types` point at `src/index.ts`) — no TS project-reference/composite build step; that was tried during M0/M1 and dropped because it required manually rebuilding a `dist/` that nothing in the real toolchain (Vite, esbuild, Vitest) ever reads, and a stale one silently shadowed live source during typecheck.
 - Device↔phone link will be BLE or WiFi from the Pi; abstract behind the ShotEvent interface so transport is swappable.
 - Decide on React Native/Expo for the mobile port once the web game loop is proven — not committed yet.
 

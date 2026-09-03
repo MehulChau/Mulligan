@@ -7,7 +7,7 @@
   "types": "src/index.ts",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
+    "typecheck": "tsc --noEmit",
     "build": "esbuild src/index.ts --bundle --format=esm --outfile=bundle/index.js"
   },
   "devDependencies": {

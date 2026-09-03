@@ -1,6 +1,6 @@
 import { degToRad } from "@mulligan/physics";
 import { describe, expect, it } from "vitest";
-import { holeToLocal, localToHole } from "../src/resolver/rotate";
+import { headingToward, holeToLocal, localToHole } from "../src/resolver/rotate";
 import type { Point2 } from "../src/types";
 
 const TEE: Point2 = { x: 0, y: 0 };
@@ -56,5 +56,22 @@ describe("localToHole -- the five sanity checks from the M1 spec", () => {
     const recovered = holeToLocal(ballPos, heading, holePoint);
     expect(recovered.d).toBeCloseTo(offset.d, 9);
     expect(recovered.l).toBeCloseTo(offset.l, 9);
+  });
+});
+
+describe("headingToward", () => {
+  it("agrees with localToHole: aiming that heading with l=0 lands on the target", () => {
+    const from: Point2 = { x: 12, y: 220 };
+    const to: Point2 = { x: 25, y: 400 };
+    const heading = headingToward(from, to);
+    const distance = Math.hypot(to.x - from.x, to.y - from.y);
+    const landed = localToHole(from, heading, { d: distance, l: 0 });
+    expect(landed.x).toBeCloseTo(to.x, 9);
+    expect(landed.y).toBeCloseTo(to.y, 9);
+  });
+
+  it("is 0 for a target straight ahead and 90deg for a target directly to the right", () => {
+    expect(headingToward(TEE, { x: 0, y: 100 })).toBeCloseTo(0, 9);
+    expect(headingToward(TEE, { x: 100, y: 0 })).toBeCloseTo(degToRad(90), 9);
   });
 });

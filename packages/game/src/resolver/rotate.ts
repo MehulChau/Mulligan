@@ -46,3 +46,8 @@ export function holeToLocal(ballPos: Point2, headingRad: number, holePoint: Poin
     l: dx * Math.cos(headingRad) - dy * Math.sin(headingRad),
   };
 }
+
+/** The heading (radians) that points straight from `from` toward `to`. Used for the default "aim at pin" heading. */
+export function headingToward(from: Point2, to: Point2): number {
+  return Math.atan2(to.x - from.x, to.y - from.y);
+}

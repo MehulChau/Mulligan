@@ -1,0 +1,237 @@
+:root {
+  --bg: #f3f6f0;
+  --panel: #fbfcf9;
+  --ink: #1c2721;
+  --sub: #5c6b61;
+  --green: #1e6b44;
+  --deep: #0d3b25;
+  --amber: #c9862b;
+  --line: #d8dfd3;
+  --chipbg: #e9efe6;
+  --track: #cbd5c6;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1512;
+    --panel: #161e19;
+    --ink: #e6ebe4;
+    --sub: #93a398;
+    --green: #3fa871;
+    --deep: #7ed0a5;
+    --amber: #e0a44e;
+    --line: #273129;
+    --chipbg: #1e2822;
+    --track: #2c382f;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1512;
+  --panel: #161e19;
+  --ink: #e6ebe4;
+  --sub: #93a398;
+  --green: #3fa871;
+  --deep: #7ed0a5;
+  --amber: #e0a44e;
+  --line: #273129;
+  --chipbg: #1e2822;
+  --track: #2c382f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Archivo", "Helvetica Neue", Arial, sans-serif;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  padding: 12px 12px 0;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.app-header h1 {
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.hole-name {
+  color: var(--sub);
+  font-weight: 600;
+}
+
+.hud {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+.hud-headline {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--green);
+  text-align: center;
+  padding: 8px 0;
+}
+.hud-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.hud-primary {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+}
+.hud-stat {
+  text-align: center;
+}
+.hud-stat b {
+  display: block;
+  font-size: 15px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.hud-stat span {
+  font-size: 10.5px;
+  color: var(--sub);
+}
+.hud-lastshot {
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+.provenance {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+.prov {
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.prov.measured {
+  color: var(--green);
+  border-color: var(--green);
+}
+.prov.estimated {
+  color: var(--sub);
+}
+
+.canvas-wrap {
+  flex: 1;
+  min-height: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.controls {
+  padding-bottom: 12px;
+}
+
+.aim-ctl {
+  margin-bottom: 8px;
+}
+.aim-ctl label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.aim-ctl output {
+  font-weight: 800;
+  color: var(--green);
+}
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--green);
+  height: 24px;
+}
+
+.clubs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.club {
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 8px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--chipbg);
+  color: var(--ink);
+  cursor: pointer;
+  flex: 1 1 auto;
+  min-width: 64px;
+}
+.club.on {
+  background: var(--green);
+  border-color: var(--green);
+  color: #fff;
+}
+
+.hitrow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.hit {
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 0;
+  flex: 1;
+  cursor: pointer;
+}
+.hit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.hit:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.skip-toggle {
+  font-size: 11.5px;
+  color: var(--sub);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
