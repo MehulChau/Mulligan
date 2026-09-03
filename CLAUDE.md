@@ -59,13 +59,21 @@ The `ShotEvent` the original brief described as a single type turned out not to 
 - `ShotEvent` — what the game consumes: the same fields, all required, plus `clubId` and a `provenance` map (`measured` vs `estimated` per field) so the UI can be honest about what's real and the calibration harness knows which shots to trust.
 - `enrichShot(raw, clubId)` in `@mulligan/shot-source` fills the gap: spin defaults to the club profile's spin scaled by swing-speed ratio, spin axis and start line default to 0 (straight) until their measurement subsystems ship.
 
-## Next milestone: M1 — playable hole game loop
-- Render a golf hole (2D top-down or stylized 2.5D — think Tiger Woods GBA, NOT 3D photorealism; 3D is explicitly out of scope for v1)
-- Loop: see hole + distance to pin → pick club in app → enter/receive launch data → shot renders → walk the hole shot by shot
-- Putting: auto-resolved or simple tap-timing minigame (nobody expects real putting at a range)
-- `SimulatedShotSource` (club presets + realistic strike variance, producing `RawShotEvent`s) stands in for the device until hardware exists — not built yet, part of M1
-- Scoring vs par; then handicap, challenge modes, ghost multiplayer per the runway
-- M2 (after M1) adds the surface-aware shot resolver that turns a `LandingState` + lie into actual rollout — driver run-out vs. wedge stop, which the physics model deliberately no longer owns
+## Milestone split — M1 vs M2 (revised 2026-09-02)
+The original brief lumped "the game loop" and "the surface-aware shot resolver" into one M1. That packed too much into one milestone; split as follows. The distinction that matters: **M1 proves the geometry and the seam. M2 makes it a game.**
+
+### M1 (current workstream): hole model, renderer, shot sources, shot placement
+- **Hole data model** — holes are data, not code: a `Hole` is a JSON file (`packages/game/src/holes/*.json`) so authoring new holes never needs a code change. Hole space is its own 2D yards coordinate frame, origin at the tee, `x` lateral (+right), `y` downrange (+toward pin) — deliberately different from the physics module's frame (x downrange, y up, z lateral); the conversion between them is isolated to one function. Surface lookup (`fairway`/`green`/`rough`/`bunker`/`water`/`tee`/`out`) is point-in-polygon (ray casting, hand-rolled, no dependency), topmost-painted-surface-wins. `HOLE_1` ("The Bend") is the one hole for this milestone: a 400-yard dogleg-right par 4.
+- Top-down renderer for that hole
+- The `ShotSource` seam (the interface hardware will eventually implement) and a simulated implementation
+- Shot placement: turning a physics `Trajectory` into a new ball position on the hole
+- Rollout is a deliberate, centralized placeholder (not the real per-surface model). Lie is detected and displayed in the HUD but does not affect the shot.
+- Non-goals for M1: no putting, no scoring, no par tracking, no "hole complete" state (reaching the green ends the demo); no lie penalties; no multiple holes/course; no persistence beyond in-memory session state; no wind/elevation/slope; `@mulligan/physics` is not touched and `AeroParams` is not retuned (still no real range data).
+
+### M2 (after M1): the surface-aware resolver
+Real rollout per surface (driver run-out vs. wedge stop — using the `LandingState` the physics module already returns), lie affecting club availability, putting, scoring vs par, hole completion.
+
+`SimulatedShotSource` (club presets + realistic strike variance) is part of M1's shot-source seam work. Handicap, challenge modes, and ghost multiplayer stay in the feature runway, after M2.
 
 ## Tech stack (decided 2026-09-01, for v1 game)
 npm workspaces monorepo:
@@ -73,7 +81,8 @@ npm workspaces monorepo:
 Mulligan/
 ├── packages/
 │   ├── physics/       @mulligan/physics — pure TS, zero deps, the ball-flight model + calibration config
-│   └── shot-source/    @mulligan/shot-source — clubs, RawShotEvent/ShotEvent + enrichShot, the calibration harness, and (M1) SimulatedShotSource (depends on physics)
+│   ├── shot-source/    @mulligan/shot-source — clubs, RawShotEvent/ShotEvent + enrichShot, the calibration harness, and (M1) SimulatedShotSource (depends on physics)
+│   └── game/           @mulligan/game (M1) — hole data model, point-in-polygon surface lookup, hole JSON, shot placement (depends on physics + shot-source)
 └── apps/
     └── web/            @mulligan/web — Vite + React 18 + TS, canvas rendering for the hole/ball-flight view
 ```
