@@ -1,7 +1,8 @@
-import { degToRad, metersToYards, mphToMps, rpmToRadPerSec, simulate } from "@mulligan/physics";
+import { degToRad } from "@mulligan/physics";
 import { HOLE_1, headingToward, resolveShot, surfaceAt } from "@mulligan/game";
-import { CLUBS, ShotLog, SimulatedShotSource, enrichShot, findClub, type ClubId } from "@mulligan/shot-source";
+import { CLUBS, ShotLog, SimulatedShotSource, enrichShot, findClub } from "@mulligan/shot-source";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { expectedCarryYds } from "./game/expectedCarry";
 import { HoleCanvas } from "./game/HoleCanvas";
 import { createInitialState, gameReducer, type ShotHistoryEntry } from "./game/gameState";
 import { AimSlider } from "./ui/AimSlider";
@@ -10,18 +11,6 @@ import { Hud } from "./ui/Hud";
 import "./App.css";
 
 const HOLE = HOLE_1;
-
-function expectedCarryYds(clubId: ClubId): number {
-  const club = findClub(clubId);
-  const trajectory = simulate({
-    ballSpeed: mphToMps(club.ballSpeedMph),
-    launchAngle: degToRad(club.launchDeg),
-    spinRate: rpmToRadPerSec(club.spinRpm),
-    spinAxis: 0,
-    startLine: 0,
-  });
-  return metersToYards(trajectory.carry);
-}
 
 export default function App() {
   const [state, dispatch] = useReducer(gameReducer, undefined, () => createInitialState(HOLE, "7i"));

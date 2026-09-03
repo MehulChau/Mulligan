@@ -39,15 +39,15 @@ describe("SimulatedShotSource", () => {
   });
 
   it("is deterministic for a given seed", async () => {
-    const a = new SimulatedShotSource(PERFECT_DISPERSION, 123);
-    const b = new SimulatedShotSource(PERFECT_DISPERSION, 123);
+    const a = new SimulatedShotSource({ dispersion: PERFECT_DISPERSION, seed: 123, fidelity: "full" });
+    const b = new SimulatedShotSource({ dispersion: PERFECT_DISPERSION, seed: 123, fidelity: "full" });
     await a.start();
     await b.start();
     expect(a.hit("driver", 1)).toEqual(b.hit("driver", 1));
   });
 
   it("PERFECT dispersion lands within 0.1 yards of the club's golden carry", async () => {
-    const source = new SimulatedShotSource(PERFECT_DISPERSION, 1);
+    const source = new SimulatedShotSource({ dispersion: PERFECT_DISPERSION, seed: 1, fidelity: "full" });
     await source.start();
 
     const cases: Array<[ClubId, number]> = [
@@ -77,6 +77,43 @@ describe("SimulatedShotSource", () => {
     source.onShot((shot) => received.push(shot));
     const shot = source.hit("driver");
     expect(received).toEqual([shot]);
+  });
+
+  it("defaults to 'device' fidelity -- the app should never accidentally get 'full'", () => {
+    const source = new SimulatedShotSource();
+    expect(source.fidelity).toBe("device");
+  });
+
+  it("'device' fidelity emits only what the Pi can measure -- spin/axis/start-line absent", async () => {
+    const source = new SimulatedShotSource({ dispersion: PERFECT_DISPERSION, seed: 1, fidelity: "device" });
+    await source.start();
+    const raw = source.hit("7i");
+
+    expect(raw.ballSpeedMph).toBeGreaterThan(0);
+    expect(raw.launchDeg).toBeGreaterThan(0);
+    expect(raw.spinRpm).toBeUndefined();
+    expect(raw.spinAxisDeg).toBeUndefined();
+    expect(raw.startLineDeg).toBeUndefined();
+
+    // the true generated shot is still available, separately, for error analysis
+    const trueShot = source.getLastTrueShot();
+    expect(trueShot?.spinRpm).toBeDefined();
+  });
+
+  it("enrichShot fills 'device'-fidelity gaps and marks them estimated -- the production path", async () => {
+    const source = new SimulatedShotSource({ dispersion: PERFECT_DISPERSION, seed: 1, fidelity: "device" });
+    await source.start();
+    const raw = source.hit("7i");
+    const enriched = enrichShot(raw, "7i");
+
+    expect(enriched.provenance.ballSpeed).toBe("measured");
+    expect(enriched.provenance.launch).toBe("measured");
+    expect(enriched.provenance.spin).toBe("estimated");
+    expect(enriched.provenance.spinAxis).toBe("estimated");
+    expect(enriched.provenance.startLine).toBe("estimated");
+    expect(enriched.spinAxisDeg).toBe(0);
+    expect(enriched.startLineDeg).toBe(0);
+    expect(enriched.spinRpm).toBeGreaterThan(0);
   });
 });
 

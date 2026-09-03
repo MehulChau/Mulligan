@@ -1,5 +1,5 @@
 import { degToRad } from "@mulligan/physics";
-import { enrichShot, findClub, type RawShotEvent } from "@mulligan/shot-source";
+import { enrichShot, findClub, type RawShotEvent, type ShotEvent } from "@mulligan/shot-source";
 import { describe, expect, it } from "vitest";
 import { estimateRollout } from "../src/resolver/rollout";
 import { resolveShot } from "../src/resolver/resolveShot";
@@ -39,6 +39,32 @@ function shotFor(clubId: Parameters<typeof findClub>[0], overrides: Partial<RawS
   const raw: RawShotEvent = { ballSpeedMph: club.ballSpeedMph, launchDeg: club.launchDeg, timestamp: 1, ...overrides };
   return enrichShot(raw, clubId);
 }
+
+/** A custom, non-club shot for tests that need specific launch conditions (e.g. a big rollout). */
+function customShot(overrides: Partial<ShotEvent>): ShotEvent {
+  return {
+    ballSpeedMph: 150,
+    launchDeg: 12.5,
+    spinRpm: 2800,
+    spinAxisDeg: 0,
+    startLineDeg: 0,
+    clubId: "driver",
+    timestamp: 1,
+    provenance: {
+      ballSpeed: "measured",
+      launch: "measured",
+      spin: "measured",
+      spinAxis: "measured",
+      startLine: "measured",
+    },
+    ...overrides,
+  };
+}
+
+// A low, hot launch minimizes descent angle and maximizes landing speed --
+// both increase the M1 rollout placeholder -- giving a large, predictable
+// roll (~13 yards) instead of the ~3-5 yards a normal club produces.
+const BIG_ROLLOUT_SHOT = customShot({ launchDeg: 6, spinRpm: 1200 });
 
 describe("resolveShot", () => {
   it("a straight shot down heading 0 lands directly downrange of the ball", () => {
@@ -84,13 +110,57 @@ describe("resolveShot", () => {
     expect(last.y).toBeCloseTo(result.landing.y, 6);
   });
 
-  it("reports the surface at rest, which can differ from the surface at landing", () => {
-    // land just short of the green (fairway), roll should not normally jump
-    // surfaces here, but landingSurface/restSurface are independently computed.
-    const shot = shotFor("driver");
-    const result = resolveShot(SIMPLE_HOLE, { x: 0, y: 175 }, 0, shot); // lands right around the green
-    expect(result.restSurface).toBeDefined();
-    expect(result.landingSurface).toBeDefined();
+  it("rest can be on a different surface than landing, when rollout carries it across a boundary", () => {
+    // A fairway/green boundary placed 0.7 yd past this shot's carry, with a
+    // ~13 yd rollout (see BIG_ROLLOUT_SHOT) -- landing must be fairway,
+    // rest must be green, not just "both defined."
+    const hole: Hole = {
+      id: "boundary-test",
+      name: "Boundary test",
+      par: 4,
+      tee: { x: 0, y: 0 },
+      pin: { x: 0, y: 220 },
+      surfaces: [
+        {
+          type: "fairway",
+          points: [
+            { x: -30, y: 0 },
+            { x: 30, y: 0 },
+            { x: 30, y: 195 },
+            { x: -30, y: 195 },
+          ],
+        },
+        {
+          type: "green",
+          points: [
+            { x: -30, y: 195 },
+            { x: 30, y: 195 },
+            { x: 30, y: 230 },
+            { x: -30, y: 230 },
+          ],
+        },
+      ],
+      bounds: { minX: -50, maxX: 50, minY: -10, maxY: 250 },
+    };
+
+    const result = resolveShot(hole, { x: 0, y: 0 }, 0, BIG_ROLLOUT_SHOT);
+
+    expect(result.landingSurface).toBe("fairway");
+    expect(result.restSurface).toBe("green");
+    expect(result.landingSurface).not.toBe(result.restSurface);
+  });
+
+  it("rollout continues in the ball's actual landing direction, not straight along the aim line", () => {
+    // A big fade: significant lateral offset (curving right) combined with
+    // the large-rollout shot. If rollout incorrectly traveled along the aim
+    // line (d only), rest.x would equal landing.x. It must not -- rollout
+    // has to continue curving right, same direction the ball was already
+    // moving on the ground at landing.
+    const fadingBigRollout = customShot({ launchDeg: 6, spinRpm: 1200, spinAxisDeg: 16 });
+    const result = resolveShot(SIMPLE_HOLE, { x: 0, y: 0 }, 0, fadingBigRollout);
+
+    expect(result.landingSurface).not.toBe("out"); // sanity: shot actually landed on the hole
+    expect(result.rest.x).toBeGreaterThan(result.landing.x);
   });
 
   it("a fade (positive spin axis) curves right of a straight shot from the same spot", () => {

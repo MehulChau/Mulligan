@@ -46,10 +46,21 @@ export function resolveShot(hole: Hole, ballPos: Point2, aimHeadingRad: number, 
   const carryYds = metersToYards(trajectory.carry);
   const lateralYds = metersToYards(trajectory.lateral);
   const rolloutYds = estimateRollout(trajectory.landing);
-  const totalYds = carryYds + rolloutYds;
+  const totalYds = carryYds + rolloutYds; // scalar carry+roll distance, same convention as a launch monitor's "total"
 
   const landing = localToHole(ballPos, aimHeadingRad, { d: carryYds, l: lateralYds });
-  const rest = localToHole(ballPos, aimHeadingRad, { d: totalYds, l: lateralYds });
+
+  // Roll continues in the direction the ball was actually moving on the
+  // ground at landing (its horizontal velocity), not straight along the aim
+  // line -- a shot curving right rolls further right, it doesn't snap back
+  // onto the aim line just because rollout kicked in.
+  const { x: vx, z: vz } = trajectory.landing.velocity;
+  const horizontalSpeed = Math.hypot(vx, vz);
+  const rollDir = horizontalSpeed > 0 ? { d: vx / horizontalSpeed, l: vz / horizontalSpeed } : { d: 1, l: 0 };
+  const rest = localToHole(ballPos, aimHeadingRad, {
+    d: carryYds + rolloutYds * rollDir.d,
+    l: lateralYds + rolloutYds * rollDir.l,
+  });
 
   return {
     trajectory,

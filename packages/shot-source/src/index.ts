@@ -13,6 +13,7 @@ export { mulberry32, gaussian } from "./rng";
 export type { ShotSource } from "./sources/ShotSource";
 export { BaseShotSource } from "./sources/ShotSource";
 export { ManualShotSource } from "./sources/ManualShotSource";
+export type { ShotFidelity, SimulatedShotSourceOptions } from "./sources/SimulatedShotSource";
 export { SimulatedShotSource } from "./sources/SimulatedShotSource";
 export { ReplayShotSource } from "./sources/ReplayShotSource";
 
