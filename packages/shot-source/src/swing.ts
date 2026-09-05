@@ -52,6 +52,22 @@ export interface SwingScalingParams {
    * number is a placeholder guess, not derived from physics -- tune it
    * against real range dispersion data once it exists, same posture as
    * `AeroParams`.
+   *
+   * 4 was tried first and rejected: it made proximity non-monotonic across
+   * the wedge range (a full 73-yard lob wedge averaged tighter, ~13ft, than
+   * an 80%-swing 50-yard shot at ~16ft -- a player could exploit that by
+   * always clubbing down to swing full), and pushed 0.55% of 30%-swing
+   * spinNoiseSigmaPct samples negative, clamped to zero spin, meaning the
+   * sigma was over-scaled. 2 is monotonic across the wedge range (measured
+   * ~3.4/6.6/9.7/12.6/13.0ft at 8/17/30/50/73 yards).
+   *
+   * Even at 2, short-game proximity still reads tight against real amateur
+   * numbers -- but that's a `DEFAULT_DISPERSION` baseline problem, not a
+   * partial-swing one: the *full-swing* lob wedge itself lands ~13ft from
+   * 73 yards, where a real amateur is more like 25-35ft. Do not tune the
+   * baseline to compensate -- wedge dispersion is directly measurable and
+   * is on the range-data list (see docs/range-session.md); fix it there,
+   * with real numbers, not by pushing this constant around blind.
    */
   partialSwingPenalty: number;
 }
@@ -61,7 +77,7 @@ export const DEFAULT_SWING_SCALING: SwingScalingParams = {
   spinExponent: 1,
   launchDegPerFractionBelowFull: 4,
   dispersionExponent: 1,
-  partialSwingPenalty: 4,
+  partialSwingPenalty: 2,
 };
 
 /** The club profile a partial swing would produce -- ball speed and spin scaled down, launch nudged up. Clamped to [MIN_SWING_FRACTION, 1]. */
