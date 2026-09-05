@@ -12,13 +12,37 @@ import readline from "node:readline";
 import { WebSocketServer, type WebSocket as WsClient } from "ws";
 
 const PORT = Number(process.env.MOCK_DEVICE_PORT ?? 8080);
-const AUTO_INTERVAL_SEC = Number(process.env.MOCK_DEVICE_AUTO_INTERVAL_SEC ?? 20);
+
+/**
+ * Set MOCK_DEVICE_AUTOSTART_SEC to start auto-fire immediately at that
+ * interval, with no keypress. This is the only way to drive the mock at
+ * all in a headless/non-TTY environment (CI, a scripted verification) --
+ * keypress control requires a real terminal.
+ */
+const AUTOSTART_AUTO_FIRE = process.env.MOCK_DEVICE_AUTOSTART_SEC !== undefined;
+const AUTO_INTERVAL_SEC = Number(process.env.MOCK_DEVICE_AUTOSTART_SEC ?? process.env.MOCK_DEVICE_AUTO_INTERVAL_SEC ?? 20);
+
+/**
+ * Testing-only knob, OFF by default: injects a fixed startLineDeg offset
+ * into every shot, as if the device's mount were physically rotated off
+ * the range's true target line. The real v1 hardware cannot measure start
+ * line at all yet (see CLAUDE.md's measurement contract -- that's the
+ * phone-behind-ball CV subsystem, not built), so this exists purely to let
+ * the app's aim-zeroing math (docs/device-protocol.md) be exercised today,
+ * ahead of the hardware that will eventually make it real. When set, this
+ * mock also advertises "startLine" in capabilities, which the real v1
+ * device does NOT do -- never treat this mode as representative of what
+ * the real hardware currently sends.
+ */
+const START_LINE_OFFSET_DEG =
+  process.env.MOCK_DEVICE_START_LINE_OFFSET_DEG !== undefined ? Number(process.env.MOCK_DEVICE_START_LINE_OFFSET_DEG) : null;
 
 const PROTOCOL_VERSION = { major: 1, minor: 0 };
 const DEVICE_ID = "mock-device-01";
 const FIRMWARE_VERSION = "mock-0.1.0";
 // Matches the real v1 hardware exactly -- see docs/device-protocol.md.
-const CAPABILITIES = ["ballSpeed", "launch"];
+// (Widened to include "startLine" only under START_LINE_OFFSET_DEG -- see its comment above.)
+const CAPABILITIES = START_LINE_OFFSET_DEG !== null ? ["ballSpeed", "launch", "startLine"] : ["ballSpeed", "launch"];
 
 let seq = 0;
 let lastShotPayload: Record<string, unknown> | null = null;
@@ -34,7 +58,13 @@ function broadcast(message: Record<string, unknown>): void {
 function randomShot(): Record<string, unknown> {
   const ballSpeedMph = Number((60 + Math.random() * 100).toFixed(1)); // 60-160mph, roughly wedge-to-driver
   const launchDeg = Number((10 + Math.random() * 25).toFixed(1)); // 10-35deg
-  return { type: "shot", seq: seq++, ballSpeedMph, launchDeg, timestamp: Date.now() };
+  const shot: Record<string, unknown> = { type: "shot", seq: seq++, ballSpeedMph, launchDeg, timestamp: Date.now() };
+  if (START_LINE_OFFSET_DEG !== null) {
+    // Small noise on top of the fixed offset -- a real misaligned mount
+    // still has shot-to-shot variation, it just never centers on zero.
+    shot.startLineDeg = Number((START_LINE_OFFSET_DEG + (Math.random() - 0.5) * 2).toFixed(1));
+  }
+  return shot;
 }
 
 function emitShot(): void {
@@ -92,7 +122,16 @@ wss.on("connection", (ws) => {
 
 wss.on("listening", () => {
   console.log(`Mock device listening on ws://localhost:${PORT}`);
+  console.log(
+    START_LINE_OFFSET_DEG !== null
+      ? `Start line reporting: ON, offset ${START_LINE_OFFSET_DEG}deg (testing only -- real v1 hardware can't measure this)`
+      : "Start line reporting: OFF (matches real v1 hardware)",
+  );
   console.log("Keys: [Enter/s] shot   [n] toggle auto-fire   [m] misbehave   [q] quit");
+  if (AUTOSTART_AUTO_FIRE) {
+    console.log("MOCK_DEVICE_AUTOSTART_SEC set -- starting auto-fire immediately (no keypress available/needed)");
+    toggleAuto();
+  }
 });
 
 // --- keyboard control ---

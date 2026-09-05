@@ -4,20 +4,24 @@ import {
   CLUBS,
   FULL_SWING_FRACTION,
   ManualShotSource,
+  NetworkShotSource,
   ShotLog,
   SimulatedShotSource,
   enrichShot,
   findClub,
   isWedge,
   mulberry32,
+  type ClubId,
   type RawShotEvent,
 } from "@mulligan/shot-source";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { expectedCarryYds } from "./game/expectedCarry";
+import { DEFAULT_DEVICE_ADDRESS, createInitialState, gameReducer, type ShotHistoryEntry } from "./game/gameState";
 import { HoleCanvas } from "./game/HoleCanvas";
-import { createInitialState, gameReducer, type ShotHistoryEntry } from "./game/gameState";
 import { AimSlider } from "./ui/AimSlider";
+import { AimZeroPanel } from "./ui/AimZeroPanel";
 import { ClubPicker } from "./ui/ClubPicker";
+import { DeviceSourcePanel } from "./ui/DeviceSourcePanel";
 import { HoleCompleteSummary } from "./ui/HoleCompleteSummary";
 import { Hud } from "./ui/Hud";
 import { ManualEntryPanel } from "./ui/ManualEntryPanel";
@@ -28,12 +32,36 @@ import "./App.css";
 
 const HOLE = HOLE_1;
 const INITIAL_CLUB = "7i";
+const DEVICE_ADDRESS_STORAGE_KEY = "mulligan:device-address";
+
+function readStoredDeviceAddress(): string {
+  try {
+    return localStorage.getItem(DEVICE_ADDRESS_STORAGE_KEY) ?? DEFAULT_DEVICE_ADDRESS;
+  } catch {
+    return DEFAULT_DEVICE_ADDRESS;
+  }
+}
 
 export default function App() {
-  const [state, dispatch] = useReducer(gameReducer, undefined, () => createInitialState(HOLE, INITIAL_CLUB));
+  const [state, dispatch] = useReducer(gameReducer, undefined, () =>
+    createInitialState(HOLE, INITIAL_CLUB, readStoredDeviceAddress()),
+  );
+
+  // NetworkShotSource's onShot/onConnectionStateChange/etc callbacks are
+  // registered exactly once, at connect time (see handleConnectDevice) --
+  // they must not close over a single render's `state`, or every device
+  // shot after that render would be judged against stale game state
+  // (wrong phase, wrong selected club, a zero from two clubs ago). Every
+  // callback that isn't invoked fresh from JSX reads `stateRef.current`
+  // instead of `state` directly for this reason.
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   const simulatedRef = useRef<SimulatedShotSource | null>(null);
   const manualRef = useRef<ManualShotSource | null>(null);
+  const networkRef = useRef<NetworkShotSource | null>(null);
   const shotLogRef = useRef<ShotLog | null>(null);
   // Seed stored (not just consumed) and logged on every putt -- same
   // reproducibility contract as SimulatedShotSource.seed, since a putting
@@ -54,8 +82,21 @@ export default function App() {
     return () => {
       simulated.stop();
       manual.stop();
+      networkRef.current?.stop();
     };
   }, []);
+
+  // The device address field is a session convenience, not game state that
+  // needs to be pure/replayable -- persisted directly here rather than
+  // threaded through the reducer.
+  useEffect(() => {
+    try {
+      localStorage.setItem(DEVICE_ADDRESS_STORAGE_KEY, state.device.address);
+    } catch {
+      // Best effort -- a private window or disabled storage just means the
+      // field doesn't remember itself next launch.
+    }
+  }, [state.device.address]);
 
   const aimHeadingRad = useMemo(
     () => headingToward(state.ballPos, state.hole.pin) + degToRad(state.aimOffsetDeg),
@@ -86,51 +127,114 @@ export default function App() {
 
   const lastEntry: ShotHistoryEntry | undefined = state.shotHistory[state.shotHistory.length - 1];
 
-  function handleSwing() {
+  // Shared tail for every shot regardless of where the RawShotEvent came
+  // from (manual sliders, the simulator, or a real device push) -- reads
+  // stateRef.current rather than `state` so the same function is safe to
+  // call from handleSwing (a fresh closure every render) AND from
+  // handleDeviceRawShot (a closure fixed once, at connect time).
+  function resolveAndPlayShot(raw: RawShotEvent, clubId: ClubId, swingFraction?: number): void {
     const log = shotLogRef.current;
-    if (!log || state.pendingShot || state.phase !== "shot") return;
+    const current = stateRef.current;
+    if (!log) return;
+
+    const aimHeading = headingToward(current.ballPos, current.hole.pin) + degToRad(current.aimOffsetDeg);
+    const shot = enrichShot(raw, clubId);
+    const result = resolveShot(current.hole, current.ballPos, aimHeading, shot);
+    const entry: ShotHistoryEntry = { clubId, raw, shot, result };
+    const penalty = isPenaltySurface(result.restSurface) ? result.restSurface : null;
+
+    setSwingError(null);
+    dispatch({ type: "SWING_RESOLVED", entry });
+    log.append({
+      sessionId: sessionIdRef.current,
+      timestamp: raw.timestamp,
+      strokeNumber: current.strokeCount + 1,
+      isPutt: false,
+      penalty,
+      raw,
+      shot,
+      rest: result.rest,
+      landingSurface: result.landingSurface,
+      restSurface: result.restSurface,
+      swingFraction,
+    });
+  }
+
+  function handleSwing() {
+    if (state.pendingShot || state.phase !== "shot") return;
 
     try {
-      let raw: RawShotEvent;
       if (state.sourceMode === "manual") {
         const manual = manualRef.current;
         if (!manual) return;
-        raw = { ...state.manualValues, timestamp: Date.now() };
+        const raw: RawShotEvent = { ...state.manualValues, timestamp: Date.now() };
         manual.emit(raw);
-      } else {
+        resolveAndPlayShot(raw, state.selectedClubId);
+      } else if (state.sourceMode === "simulated") {
         const simulated = simulatedRef.current;
         if (!simulated) return;
-        raw = simulated.hit(state.selectedClubId, Date.now(), effectiveSwingFraction);
+        const raw = simulated.hit(state.selectedClubId, Date.now(), effectiveSwingFraction);
+        resolveAndPlayShot(
+          raw,
+          state.selectedClubId,
+          effectiveSwingFraction !== FULL_SWING_FRACTION ? effectiveSwingFraction : undefined,
+        );
       }
-
-      const shot = enrichShot(raw, state.selectedClubId);
-      const result = resolveShot(state.hole, state.ballPos, aimHeadingRad, shot);
-      const entry: ShotHistoryEntry = { clubId: state.selectedClubId, raw, shot, result };
-      const penalty = isPenaltySurface(result.restSurface) ? result.restSurface : null;
-
-      setSwingError(null);
-      dispatch({ type: "SWING_RESOLVED", entry });
-      log.append({
-        sessionId: sessionIdRef.current,
-        timestamp: raw.timestamp,
-        strokeNumber: state.strokeCount + 1,
-        isPutt: false,
-        penalty,
-        raw,
-        shot,
-        rest: result.rest,
-        landingSurface: result.landingSurface,
-        restSurface: result.restSurface,
-        swingFraction:
-          state.sourceMode === "simulated" && effectiveSwingFraction !== FULL_SWING_FRACTION
-            ? effectiveSwingFraction
-            : undefined,
-      });
+      // Device mode has no manual trigger -- shots arrive via handleDeviceRawShot below.
     } catch (err) {
       // A game action must never crash the whole app -- surface it and let
       // the player try a different club/aim/manual value instead.
       setSwingError(err instanceof Error ? err.message : "That shot couldn't be resolved. Try different numbers.");
     }
+  }
+
+  // Registered once with NetworkShotSource.onShot() at connect time, so
+  // everything it reads comes from stateRef.current, not the `state` this
+  // render captured.
+  function handleDeviceRawShot(raw: RawShotEvent): void {
+    const current = stateRef.current;
+
+    if (current.device.calibratingZero) {
+      dispatch({ type: "AIM_ZERO_SAMPLE_RECEIVED", raw });
+      return;
+    }
+    if (current.sourceMode !== "device" || current.phase !== "shot" || current.pendingShot) {
+      // A device shot that arrives while the player isn't actively playing
+      // in Device mode (still browsing Simulated, mid flight animation, on
+      // the putting green) is dropped rather than queued -- there is no
+      // sensible "later" for a swing that already happened.
+      return;
+    }
+
+    try {
+      // Only startLineDeg gets the session-zero correction -- see
+      // DeviceSessionState.sessionZeroDeg's doc comment for why spinAxisDeg
+      // doesn't need the same treatment.
+      const corrected: RawShotEvent =
+        raw.startLineDeg !== undefined ? { ...raw, startLineDeg: raw.startLineDeg - current.device.sessionZeroDeg } : raw;
+      resolveAndPlayShot(corrected, current.selectedClubId);
+    } catch (err) {
+      setSwingError(err instanceof Error ? err.message : "That shot couldn't be resolved.");
+    }
+  }
+
+  function handleConnectDevice(): void {
+    networkRef.current?.stop();
+    const source = new NetworkShotSource({ url: stateRef.current.device.address });
+    networkRef.current = source;
+    source.onConnectionStateChange((s) => dispatch({ type: "DEVICE_CONNECTION_STATE", state: s }));
+    source.onDeviceInfo((info) => dispatch({ type: "DEVICE_INFO", info }));
+    source.onStatus((status) => dispatch({ type: "DEVICE_STATUS", status }));
+    source.onShot(handleDeviceRawShot);
+    source.start();
+  }
+
+  function handleDisconnectDevice(): void {
+    // stop() itself synchronously fires the "disconnected" state through
+    // the onConnectionStateChange listener registered in
+    // handleConnectDevice -- no separate dispatch needed here.
+    networkRef.current?.stop();
+    networkRef.current = null;
   }
 
   function handlePutt() {
@@ -215,6 +319,29 @@ export default function App() {
             onChange={(mode) => dispatch({ type: "SET_SOURCE_MODE", mode })}
           />
 
+          {state.sourceMode === "device" && (
+            <DeviceSourcePanel
+              device={state.device}
+              disabled={controlsDisabled}
+              onAddressChange={(address) => dispatch({ type: "SET_DEVICE_ADDRESS", address })}
+              onConnect={handleConnectDevice}
+              onDisconnect={handleDisconnectDevice}
+            />
+          )}
+
+          {state.sourceMode === "device" && state.device.connectionState === "connected" && (
+            <AimZeroPanel
+              sessionZeroDeg={state.device.sessionZeroDeg}
+              zeroConfirmed={state.device.zeroConfirmed}
+              calibratingZero={state.device.calibratingZero}
+              pendingZeroSample={state.device.pendingZeroSample}
+              disabled={controlsDisabled}
+              onStart={() => dispatch({ type: "START_AIM_ZERO_CALIBRATION" })}
+              onConfirm={() => dispatch({ type: "CONFIRM_AIM_ZERO" })}
+              onCancel={() => dispatch({ type: "CANCEL_AIM_ZERO_CALIBRATION" })}
+            />
+          )}
+
           <AimSlider
             aimOffsetDeg={state.aimOffsetDeg}
             disabled={controlsDisabled}
@@ -249,9 +376,19 @@ export default function App() {
           {swingError && <div className="swing-error">{swingError}</div>}
 
           <div className="hitrow">
-            <button type="button" className="hit" disabled={!canSwing} onClick={handleSwing}>
-              {sourcesReady ? "Swing" : "Loading…"}
-            </button>
+            {state.sourceMode === "device" ? (
+              <div className="device-waiting">
+                {state.device.connectionState !== "connected"
+                  ? "Connect a device above to play"
+                  : state.device.calibratingZero
+                    ? "Zeroing — hit a shot toward your target"
+                    : "Waiting for a shot from the device…"}
+              </div>
+            ) : (
+              <button type="button" className="hit" disabled={!canSwing} onClick={handleSwing}>
+                {sourcesReady ? "Swing" : "Loading…"}
+              </button>
+            )}
             <label className="skip-toggle">
               <input
                 type="checkbox"

@@ -11,7 +11,17 @@ import {
   type ShotResult,
   type Point2,
 } from "@mulligan/game";
-import { CLUBS, FULL_SWING_FRACTION, findClub, type ClubId, type RawShotEvent, type ShotEvent } from "@mulligan/shot-source";
+import {
+  CLUBS,
+  FULL_SWING_FRACTION,
+  findClub,
+  type ClubId,
+  type ConnectionState,
+  type DeviceInfo,
+  type DeviceStatus,
+  type RawShotEvent,
+  type ShotEvent,
+} from "@mulligan/shot-source";
 
 export interface ShotHistoryEntry {
   clubId: ClubId;
@@ -21,7 +31,52 @@ export interface ShotHistoryEntry {
 }
 
 export type GamePhase = "shot" | "putting" | "holed";
-export type ShotSourceMode = "simulated" | "manual";
+export type ShotSourceMode = "simulated" | "manual" | "device";
+
+/**
+ * Everything about the device connection and aim-zeroing that needs to
+ * survive a "Play again" (a new hole session, not a new range session) --
+ * see docs/device-protocol.md's aim-zeroing section for why this exists at
+ * all. Kept as its own sub-object so RESET can carry it forward wholesale
+ * instead of re-deriving each field.
+ */
+export interface DeviceSessionState {
+  /** ws:// URL, persisted to localStorage by App.tsx -- not gameState's concern. */
+  address: string;
+  connectionState: ConnectionState;
+  deviceInfo: DeviceInfo | null;
+  status: DeviceStatus | null;
+  /**
+   * Degrees subtracted from every device-reported `startLineDeg` before
+   * it's treated as relative to the player's chosen aim line. Deliberately
+   * does NOT apply to `spinAxisDeg`: spin axis describes which way the
+   * ball curves relative to its OWN initial velocity, which a rotated
+   * device mount doesn't change -- only the reported start line (the
+   * device's opinion of "which way is straight ahead") needs correcting.
+   */
+  sessionZeroDeg: number;
+  /** Distinguishes "never zeroed, sessionZeroDeg is just its default" from "the player confirmed a zero of exactly 0deg." */
+  zeroConfirmed: boolean;
+  /** True while the next device shot should be captured as a zero sample instead of played as a stroke. */
+  calibratingZero: boolean;
+  /** Most recent raw shot captured during calibration, awaiting the player's confirm/cancel. */
+  pendingZeroSample: RawShotEvent | null;
+}
+
+export const DEFAULT_DEVICE_ADDRESS = "ws://localhost:8080";
+
+function createInitialDeviceState(address: string): DeviceSessionState {
+  return {
+    address,
+    connectionState: "disconnected",
+    deviceInfo: null,
+    status: null,
+    sessionZeroDeg: 0,
+    zeroConfirmed: false,
+    calibratingZero: false,
+    pendingZeroSample: null,
+  };
+}
 
 /** Manual-entry sliders — mirrors the fields SimulatedShotSource would otherwise generate. */
 export interface ManualEntryValues {
@@ -55,6 +110,8 @@ export interface GameState {
   lastPuttResult: PuttResult | null;
   /** The penalty (if any) incurred by the most recently completed stroke — for the HUD callout. */
   lastPenalty: PenaltyKind | null;
+
+  device: DeviceSessionState;
 }
 
 export type GameAction =
@@ -67,7 +124,15 @@ export type GameAction =
   | { type: "SHOT_SETTLED" }
   | { type: "PUTT_RESOLVED"; result: PuttResult }
   | { type: "TOGGLE_SKIP_ANIMATION" }
-  | { type: "RESET"; hole: Hole; clubId: ClubId };
+  | { type: "RESET"; hole: Hole; clubId: ClubId }
+  | { type: "SET_DEVICE_ADDRESS"; address: string }
+  | { type: "DEVICE_CONNECTION_STATE"; state: ConnectionState }
+  | { type: "DEVICE_INFO"; info: DeviceInfo }
+  | { type: "DEVICE_STATUS"; status: DeviceStatus }
+  | { type: "START_AIM_ZERO_CALIBRATION" }
+  | { type: "AIM_ZERO_SAMPLE_RECEIVED"; raw: RawShotEvent }
+  | { type: "CONFIRM_AIM_ZERO" }
+  | { type: "CANCEL_AIM_ZERO_CALIBRATION" };
 
 /** An amateur golfer picks up after this many putts on one green; nothing loops forever. */
 const MAX_PUTTS = 5;
@@ -101,6 +166,17 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, aimOffsetDeg: action.deg };
 
     case "SET_SOURCE_MODE":
+      // Stepping away from Device mode mid-calibration would otherwise
+      // strand calibratingZero/pendingZeroSample -- the "Zero aim" button
+      // isn't reachable outside Device mode, so there'd be no way back in
+      // to confirm or cancel it.
+      if (action.mode !== "device" && state.device.calibratingZero) {
+        return {
+          ...state,
+          sourceMode: action.mode,
+          device: { ...state.device, calibratingZero: false, pendingZeroSample: null },
+        };
+      }
       return { ...state, sourceMode: action.mode };
 
     case "SET_SWING_FRACTION":
@@ -190,14 +266,53 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, skipAnimation: !state.skipAnimation };
 
     case "RESET":
-      return createInitialState(action.hole, action.clubId);
+      // A new hole session, not a new range session -- the device stays
+      // connected and the aim zero stays set. Re-pairing and re-zeroing on
+      // every "Play again" would be exactly the workflow friction M3 was
+      // supposed to remove.
+      return { ...createInitialState(action.hole, action.clubId, state.device.address), device: state.device };
+
+    case "SET_DEVICE_ADDRESS":
+      return { ...state, device: { ...state.device, address: action.address } };
+
+    case "DEVICE_CONNECTION_STATE":
+      return { ...state, device: { ...state.device, connectionState: action.state } };
+
+    case "DEVICE_INFO":
+      return { ...state, device: { ...state.device, deviceInfo: action.info } };
+
+    case "DEVICE_STATUS":
+      return { ...state, device: { ...state.device, status: action.status } };
+
+    case "START_AIM_ZERO_CALIBRATION":
+      return { ...state, device: { ...state.device, calibratingZero: true, pendingZeroSample: null } };
+
+    case "AIM_ZERO_SAMPLE_RECEIVED":
+      return { ...state, device: { ...state.device, pendingZeroSample: action.raw } };
+
+    case "CONFIRM_AIM_ZERO": {
+      const sample = state.device.pendingZeroSample;
+      return {
+        ...state,
+        device: {
+          ...state.device,
+          sessionZeroDeg: sample?.startLineDeg ?? 0,
+          zeroConfirmed: true,
+          calibratingZero: false,
+          pendingZeroSample: null,
+        },
+      };
+    }
+
+    case "CANCEL_AIM_ZERO_CALIBRATION":
+      return { ...state, device: { ...state.device, calibratingZero: false, pendingZeroSample: null } };
 
     default:
       return state;
   }
 }
 
-export function createInitialState(hole: Hole, initialClubId: ClubId): GameState {
+export function createInitialState(hole: Hole, initialClubId: ClubId, initialDeviceAddress: string = DEFAULT_DEVICE_ADDRESS): GameState {
   return {
     hole,
     ballPos: hole.tee,
@@ -217,5 +332,7 @@ export function createInitialState(hole: Hole, initialClubId: ClubId): GameState
     puttAttempts: 0,
     lastPuttResult: null,
     lastPenalty: null,
+
+    device: createInitialDeviceState(initialDeviceAddress),
   };
 }

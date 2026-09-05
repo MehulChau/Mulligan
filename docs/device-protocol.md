@@ -183,19 +183,35 @@ it didn't.
 ## Aim zeroing lives entirely in the app
 
 The device knows nothing about the hole, the pin, or which way the player
-is aiming. It reports `startLineDeg`/`spinAxisDeg` relative to **its own
-fixed physical mounting angle** — whatever "straight ahead" means to a
-camera bolted to a stand next to the mat. It never changes this
-reference, ever, regardless of what the player does in the app.
+is aiming. It reports `startLineDeg` relative to **its own fixed physical
+mounting angle** — whatever "straight ahead" means to a camera bolted to
+a stand next to the mat. It never changes this reference, ever,
+regardless of what the player does in the app.
 
 The app is the only thing that knows where the pin is. Once per session
 (and again any time the player changes bays or feels the zero has
-drifted), the player points at a fixed physical target and taps to set
-it as zero. The app stores that as `sessionZeroDeg` and subtracts it from
-every subsequent `startLineDeg`/`spinAxisDeg` before treating them as
-"relative to the player's aim." See `AimZeroPanel`/`gameState.ts` in
-`apps/web` for the implementation — none of this reaches the device, and
-none of it is part of this protocol.
+drifted), the player points at a fixed physical target, taps "Zero aim,"
+and hits one real shot toward it — there's no live continuous angle
+reading to sample, only `shot` messages, so the zero calibration is
+itself a real (if throwaway) swing. That swing's `startLineDeg` becomes
+`sessionZeroDeg` once the player confirms it; it does **not** count as a
+stroke in the round (the app diverts it before it ever reaches
+`resolveShot`). Every subsequent shot's `startLineDeg` has
+`sessionZeroDeg` subtracted before the app treats it as "relative to the
+player's aim."
+
+**Only `startLineDeg` gets this correction — deliberately not
+`spinAxisDeg`.** A rotated device mount skews which direction the device
+thinks the ball started in, which is exactly what `startLineDeg`
+measures. It does not change which way the ball curves relative to its
+own flight path, which is what `spinAxisDeg` measures — that's already
+relative, not absolute, so correcting it against the mount's rotation
+would be correcting for an error it doesn't have.
+
+See `AimZeroPanel`/`DeviceSourcePanel`/`gameState.ts`'s `DeviceSessionState`
+in `apps/web` for the implementation — none of this reaches the device,
+and none of it is part of this protocol. To exercise it without hardware,
+see `MOCK_DEVICE_START_LINE_OFFSET_DEG` above.
 
 ## Validation bounds (placeholder — replace after a real range session)
 
@@ -238,6 +254,20 @@ be driven interactively from the terminal it runs in:
   (closing the socket without a close handshake, to simulate a WiFi
   hiccup rather than a clean disconnect).
 - Press `q` to quit.
+
+Two environment variables cover what a keyboard can't:
+
+- `MOCK_DEVICE_AUTOSTART_SEC=<n>` starts auto-fire immediately at that
+  interval, no keypress. This is the only way to drive the mock at all in
+  a headless/non-TTY context (CI, a scripted check) — keypress control
+  needs a real terminal.
+- `MOCK_DEVICE_START_LINE_OFFSET_DEG=<deg>` makes the mock also advertise
+  `"startLine"` and report a fixed offset (plus small noise) on every
+  shot, as if its mount were physically rotated off the target line. This
+  is **testing-only** — the real v1 hardware cannot measure start line at
+  all yet — and exists purely so the app's aim-zeroing math can be
+  exercised end to end before the phone-behind-ball CV subsystem that
+  will eventually make this real actually ships.
 
 **The loop, end to end:**
 

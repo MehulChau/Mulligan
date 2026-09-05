@@ -29,6 +29,16 @@ export function SourceModeToggle({ mode, disabled, onChange }: SourceModeToggleP
       >
         Manual
       </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={mode === "device"}
+        className={"mode-tab" + (mode === "device" ? " on" : "")}
+        disabled={disabled}
+        onClick={() => onChange("device")}
+      >
+        Device
+      </button>
     </div>
   );
 }
