@@ -25,11 +25,21 @@ export interface ShotLogEntry {
   rest?: { x: number; y: number };
   landingSurface?: string;
   restSurface?: string;
+  /** Present when this stroke was a simulated wedge swung at less than full — see @mulligan/shot-source's swing.ts. Absent for manual entries and full swings. */
+  swingFraction?: number;
 
   // Putt fields — present when isPutt.
   puttDistanceBeforeYds?: number;
   puttDistanceAfterYds?: number;
   holed?: boolean;
+  /**
+   * The seed behind the session's putting RNG, logged on every putt (not
+   * just the first) so a session can be reconstructed from any single
+   * entry without needing separate per-session metadata storage.
+   * Reproducibility is the entire reason this log exists — see
+   * SimulatedShotSource.seed for the equivalent on the ball-flight side.
+   */
+  puttingSeed?: number;
 }
 
 /** Minimal storage seam — same shape as window.localStorage, swappable for tests/SSR. */

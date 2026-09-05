@@ -1,6 +1,7 @@
 import { findClub, type ClubId } from "../clubs";
 import { DEFAULT_DISPERSION, simulateShot, type DispersionParams } from "../dispersion";
 import { mulberry32 } from "../rng";
+import { FULL_SWING_FRACTION, scaleClubForSwing, scaleDispersionForSwing } from "../swing";
 import type { RawShotEvent } from "../types";
 import { BaseShotSource } from "./ShotSource";
 
@@ -40,10 +41,20 @@ export class SimulatedShotSource extends BaseShotSource {
     this.rng = mulberry32(this.seed);
   }
 
-  hit(clubId: ClubId, timestamp: number = Date.now()): RawShotEvent {
+  /**
+   * `swingFraction` (default: full) scales the club's ball speed/spin/launch
+   * and tightens dispersion for a partial swing -- see `scaleClubForSwing`.
+   * The device never measures swing intent, only what happened, so this
+   * only shapes what SimulatedShotSource generates; it has no analog on
+   * ManualShotSource or RawShotEvent.
+   */
+  hit(clubId: ClubId, timestamp: number = Date.now(), swingFraction: number = FULL_SWING_FRACTION): RawShotEvent {
     this.requireStarted("hit a shot");
-    const club = findClub(clubId);
-    const trueShot = simulateShot(club, this.dispersion, this.rng, timestamp);
+    const baseClub = findClub(clubId);
+    const club = swingFraction === FULL_SWING_FRACTION ? baseClub : scaleClubForSwing(baseClub, swingFraction);
+    const dispersion =
+      swingFraction === FULL_SWING_FRACTION ? this.dispersion : scaleDispersionForSwing(this.dispersion, swingFraction);
+    const trueShot = simulateShot(club, dispersion, this.rng, timestamp);
     this.lastTrue = trueShot;
 
     const emitted: RawShotEvent =

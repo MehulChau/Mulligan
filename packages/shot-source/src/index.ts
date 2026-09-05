@@ -1,6 +1,16 @@
-export { CLUBS, findClub, type ClubId, type ClubProfile } from "./clubs";
+export { CLUBS, findClub, isWedge, WEDGE_IDS, type ClubId, type ClubProfile } from "./clubs";
 export type { RawShotEvent, ShotEvent, ShotField, Provenance } from "./types";
 export { enrichShot } from "./enrich";
+
+export type { SwingScalingParams } from "./swing";
+export {
+  DEFAULT_SWING_SCALING,
+  MIN_SWING_FRACTION,
+  FULL_SWING_FRACTION,
+  clampSwingFraction,
+  scaleClubForSwing,
+  scaleDispersionForSwing,
+} from "./swing";
 export type { Measurement } from "./calibration/measurements";
 export { MEASUREMENTS } from "./calibration/measurements";
 export type { ClubResidual, FitResiduals } from "./calibration/fit";

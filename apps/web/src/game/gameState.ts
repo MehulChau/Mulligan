@@ -11,7 +11,7 @@ import {
   type ShotResult,
   type Point2,
 } from "@mulligan/game";
-import { CLUBS, findClub, type ClubId, type RawShotEvent, type ShotEvent } from "@mulligan/shot-source";
+import { CLUBS, FULL_SWING_FRACTION, findClub, type ClubId, type RawShotEvent, type ShotEvent } from "@mulligan/shot-source";
 
 export interface ShotHistoryEntry {
   clubId: ClubId;
@@ -39,6 +39,8 @@ export interface GameState {
   aimOffsetDeg: number;
   selectedClubId: ClubId;
   sourceMode: ShotSourceMode;
+  /** How hard a simulated wedge swing is, 0.3-1.0. Only meaningful for a wedge in Simulated mode; reset to full on every club change. */
+  swingFraction: number;
   manualValues: ManualEntryValues;
   shotHistory: ShotHistoryEntry[];
   skipAnimation: boolean;
@@ -59,6 +61,7 @@ export type GameAction =
   | { type: "SELECT_CLUB"; clubId: ClubId }
   | { type: "SET_AIM_OFFSET_DEG"; deg: number }
   | { type: "SET_SOURCE_MODE"; mode: ShotSourceMode }
+  | { type: "SET_SWING_FRACTION"; fraction: number }
   | { type: "SET_MANUAL_VALUE"; field: keyof ManualEntryValues; value: number }
   | { type: "SWING_RESOLVED"; entry: ShotHistoryEntry }
   | { type: "SHOT_SETTLED" }
@@ -83,14 +86,25 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
     case "SELECT_CLUB":
       // Loading the new club's preset into the manual sliders too means
       // switching to Manual mode right after picking a club starts from
-      // that club's typical numbers, not whatever was left over.
-      return { ...state, selectedClubId: action.clubId, manualValues: manualValuesForClub(action.clubId) };
+      // that club's typical numbers, not whatever was left over. Swing
+      // fraction resets to full for the same reason -- a new club starts
+      // from its full-swing carry, not a leftover partial swing from
+      // whatever club was selected before.
+      return {
+        ...state,
+        selectedClubId: action.clubId,
+        manualValues: manualValuesForClub(action.clubId),
+        swingFraction: FULL_SWING_FRACTION,
+      };
 
     case "SET_AIM_OFFSET_DEG":
       return { ...state, aimOffsetDeg: action.deg };
 
     case "SET_SOURCE_MODE":
       return { ...state, sourceMode: action.mode };
+
+    case "SET_SWING_FRACTION":
+      return { ...state, swingFraction: action.fraction };
 
     case "SET_MANUAL_VALUE":
       return { ...state, manualValues: { ...state.manualValues, [action.field]: action.value } };
@@ -190,6 +204,7 @@ export function createInitialState(hole: Hole, initialClubId: ClubId): GameState
     aimOffsetDeg: 0,
     selectedClubId: initialClubId,
     sourceMode: "simulated",
+    swingFraction: FULL_SWING_FRACTION,
     manualValues: manualValuesForClub(initialClubId),
     shotHistory: [],
     skipAnimation: false,

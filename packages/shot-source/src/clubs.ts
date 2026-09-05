@@ -43,3 +43,10 @@ export function findClub(clubId: ClubId): ClubProfile {
   }
   return club;
 }
+
+/** Clubs a partial swing makes sense for -- the ones short enough that "hit it easier" is a real shot, not a driver stunt. */
+export const WEDGE_IDS: readonly ClubId[] = ["pw", "gw", "sw", "lw"];
+
+export function isWedge(clubId: ClubId): boolean {
+  return WEDGE_IDS.includes(clubId);
+}

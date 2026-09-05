@@ -70,6 +70,25 @@ describe("SimulatedShotSource", () => {
     }
   });
 
+  it("a partial swingFraction produces a slower, lower-spin shot than a full swing", async () => {
+    const source = new SimulatedShotSource({ dispersion: PERFECT_DISPERSION, seed: 1, fidelity: "full" });
+    await source.start();
+
+    const full = source.hit("lw", 1, 1);
+    const half = source.hit("lw", 2, 0.5);
+
+    expect(half.ballSpeedMph).toBeLessThan(full.ballSpeedMph);
+    expect(half.spinRpm!).toBeLessThan(full.spinRpm!);
+  });
+
+  it("defaults swingFraction to a full swing when omitted", async () => {
+    const a = new SimulatedShotSource({ dispersion: PERFECT_DISPERSION, seed: 1, fidelity: "full" });
+    const b = new SimulatedShotSource({ dispersion: PERFECT_DISPERSION, seed: 1, fidelity: "full" });
+    await a.start();
+    await b.start();
+    expect(a.hit("lw", 1)).toEqual(b.hit("lw", 1, 1));
+  });
+
   it("notifies subscribers on hit", async () => {
     const source = new SimulatedShotSource();
     await source.start();

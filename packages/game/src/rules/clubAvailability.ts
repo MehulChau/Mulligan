@@ -1,5 +1,5 @@
 import type { ClubId, ClubProfile } from "@mulligan/shot-source";
-import { findClub } from "@mulligan/shot-source";
+import { findClub, WEDGE_IDS } from "@mulligan/shot-source";
 import type { SurfaceType } from "../types";
 
 /**
@@ -16,7 +16,6 @@ export interface ClubAvailability {
 }
 
 const NO_DRIVER_WOODS: readonly ClubId[] = ["driver", "3w"];
-const WEDGES: readonly ClubId[] = ["pw", "gw", "sw", "lw"];
 
 export function clubAvailability(surface: SurfaceType, clubId: ClubId): ClubAvailability {
   switch (surface) {
@@ -31,7 +30,7 @@ export function clubAvailability(surface: SurfaceType, clubId: ClubId): ClubAvai
       return { available: true };
 
     case "bunker":
-      if (!WEDGES.includes(clubId)) {
+      if (!WEDGE_IDS.includes(clubId)) {
         return { available: false, reason: "bunker — wedges only" };
       }
       return { available: true };

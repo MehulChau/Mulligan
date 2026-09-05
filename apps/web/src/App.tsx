@@ -2,11 +2,13 @@ import { degToRad } from "@mulligan/physics";
 import { HOLE_1, headingToward, isPenaltySurface, resolvePutt, resolveShot, summarizeScore, surfaceAt } from "@mulligan/game";
 import {
   CLUBS,
+  FULL_SWING_FRACTION,
   ManualShotSource,
   ShotLog,
   SimulatedShotSource,
   enrichShot,
   findClub,
+  isWedge,
   mulberry32,
   type RawShotEvent,
 } from "@mulligan/shot-source";
@@ -21,6 +23,7 @@ import { Hud } from "./ui/Hud";
 import { ManualEntryPanel } from "./ui/ManualEntryPanel";
 import { PuttingPanel } from "./ui/PuttingPanel";
 import { SourceModeToggle } from "./ui/SourceModeToggle";
+import { SwingFractionSlider } from "./ui/SwingFractionSlider";
 import "./App.css";
 
 const HOLE = HOLE_1;
@@ -32,7 +35,11 @@ export default function App() {
   const simulatedRef = useRef<SimulatedShotSource | null>(null);
   const manualRef = useRef<ManualShotSource | null>(null);
   const shotLogRef = useRef<ShotLog | null>(null);
-  const puttingRngRef = useRef(mulberry32(Date.now()));
+  // Seed stored (not just consumed) and logged on every putt -- same
+  // reproducibility contract as SimulatedShotSource.seed, since a putting
+  // sequence that can't be replayed defeats the point of the shot log.
+  const puttingSeedRef = useRef<number>(Date.now());
+  const puttingRngRef = useRef(mulberry32(puttingSeedRef.current));
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const [sourcesReady, setSourcesReady] = useState(false);
   const [swingError, setSwingError] = useState<string | null>(null);
@@ -63,11 +70,16 @@ export default function App() {
   const currentSurface = useMemo(() => surfaceAt(state.hole, state.ballPos), [state.hole, state.ballPos]);
 
   const selectedClub = findClub(state.selectedClubId);
-  // expectedCarryYds computes lazily on first request per club and caches
-  // the result (see game/expectedCarry.ts) -- cheap enough on every render
-  // that no memoization is needed here; only the first tap on a given club
-  // does real work.
-  const clubExpectedCarry = expectedCarryYds(state.selectedClubId);
+  const wedgeSelected = isWedge(state.selectedClubId);
+  // Manual mode has its own direct-entry sliders (including ball speed), so
+  // swing fraction only applies to a simulated wedge -- everything else
+  // always swings full.
+  const effectiveSwingFraction = state.sourceMode === "simulated" && wedgeSelected ? state.swingFraction : FULL_SWING_FRACTION;
+  // expectedCarryYds computes lazily on first request per (club, fraction)
+  // and caches the result (see game/expectedCarry.ts) -- cheap enough on
+  // every render that no memoization is needed here; only the first tap on
+  // a given club/fraction does real work.
+  const clubExpectedCarry = expectedCarryYds(state.selectedClubId, effectiveSwingFraction);
 
   const previousPaths = useMemo(() => state.shotHistory.map((entry) => entry.result.path2d), [state.shotHistory]);
   const previousRestSpots = useMemo(() => state.shotHistory.map((entry) => entry.result.rest), [state.shotHistory]);
@@ -88,7 +100,7 @@ export default function App() {
       } else {
         const simulated = simulatedRef.current;
         if (!simulated) return;
-        raw = simulated.hit(state.selectedClubId);
+        raw = simulated.hit(state.selectedClubId, Date.now(), effectiveSwingFraction);
       }
 
       const shot = enrichShot(raw, state.selectedClubId);
@@ -109,6 +121,10 @@ export default function App() {
         rest: result.rest,
         landingSurface: result.landingSurface,
         restSurface: result.restSurface,
+        swingFraction:
+          state.sourceMode === "simulated" && effectiveSwingFraction !== FULL_SWING_FRACTION
+            ? effectiveSwingFraction
+            : undefined,
       });
     } catch (err) {
       // A game action must never crash the whole app -- surface it and let
@@ -132,6 +148,7 @@ export default function App() {
       puttDistanceBeforeYds: result.distanceBefore,
       puttDistanceAfterYds: result.distanceAfter,
       holed: result.holed,
+      puttingSeed: puttingSeedRef.current,
     });
   }
 
@@ -211,6 +228,15 @@ export default function App() {
             disabled={controlsDisabled}
             onSelect={(clubId) => dispatch({ type: "SELECT_CLUB", clubId })}
           />
+
+          {state.sourceMode === "simulated" && wedgeSelected && (
+            <SwingFractionSlider
+              fraction={state.swingFraction}
+              expectedCarryYds={clubExpectedCarry}
+              disabled={controlsDisabled}
+              onChange={(fraction) => dispatch({ type: "SET_SWING_FRACTION", fraction })}
+            />
+          )}
 
           {state.sourceMode === "manual" && (
             <ManualEntryPanel

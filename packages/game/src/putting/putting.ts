@@ -8,25 +8,25 @@
 import type { SurfaceType } from "../types";
 
 /**
- * Well past a literal fringe. The honest reason it's this large: M2a's bag
- * bottoms out at the lob wedge's fixed FULL-SWING carry (~77 yards, no
- * partial/finesse shots exist yet), so anywhere from a few yards to ~70
- * yards out, every available club overshoots the pin -- often by a lot, and
- * since "aim at the pin" can point almost sideways once you're this close,
- * not always "long," sometimes wildly offline. Simulated round-trip testing
- * confirmed this is a real dead end, not a hypothetical one: without this
- * threshold, ~10-25% of rounds never finished (repeated overshoot,
- * sometimes oscillating back and forth past the green forever).
+ * A true fringe distance -- close enough to the pin that putting from just
+ * off the green is a normal shot choice, not a concession.
  *
- * Reusing the putting model this far out is a stand-in for short-game
- * shots M2a doesn't have, not a claim that anyone putts from 60 yards. The
- * math still behaves sensibly that far out (leave distance shrinks by
- * ~80-90% per attempt, so it converges in 2-3 "putts" well within the
- * MAX_PUTTS cap) -- but the honest fix is a real pitch/chip shot for the
- * 20-80 yard range in a later milestone, which would let this number come
- * back down to something a fringe actually looks like.
+ * M2a briefly widened this to 65 yards as a workaround: the bag bottomed
+ * out at the lob wedge's fixed full-swing carry (~77 yards), so anywhere
+ * from a few yards to ~70 yards out, every available club overshot the pin
+ * -- a real dead end, confirmed by Monte Carlo simulation, that made
+ * ~10-25% of rounds never finish. But routing that whole zone through the
+ * putting model meant asking a curve calibrated out to 60 feet to resolve
+ * shots out to 195 feet -- a flat ~3-stroke toll with a ~0.02% hole-out
+ * chance, not a putt. The score distribution still looked healthy, which is
+ * what made it dangerous: it quietly deleted the short game, the exact shot
+ * this product exists to serve.
+ *
+ * M2a.1 closed the gap for real with partial-swing wedges (`swingFraction`
+ * in `@mulligan/shot-source`), so this constant is back to an actual
+ * fringe. See CLAUDE.md's M2a.1 section for the full story.
  */
-export const FRINGE_PUTTING_DISTANCE_YDS = 65;
+export const FRINGE_PUTTING_DISTANCE_YDS = 5;
 
 /** Whether the ball can be putted from here: on the green, or close enough to the pin regardless of surface. */
 export function isPuttable(restSurface: SurfaceType, distanceToPinYds: number): boolean {

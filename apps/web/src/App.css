@@ -237,6 +237,9 @@ body {
 .aim-ctl {
   margin-bottom: 8px;
 }
+.swing-ctl {
+  margin-bottom: 10px;
+}
 .ctl label {
   display: flex;
   justify-content: space-between;
@@ -441,6 +444,9 @@ input[type="range"]:disabled {
   }
   .aim-ctl {
     margin-bottom: 4px;
+  }
+  .swing-ctl {
+    margin-bottom: 6px;
   }
   .clubs {
     margin-bottom: 6px;
