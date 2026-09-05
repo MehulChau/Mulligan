@@ -12,10 +12,16 @@
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "calibrate": "npm run calibrate -w packages/shot-source",
+    "rescale-clubs": "tsx tools/rescale-clubs.ts",
+    "mock-device": "tsx tools/mock-device.ts",
     "build:tools": "npm run build -w packages/physics && npm run build -w packages/shot-source",
     "tools": "npm run build:tools && python3 -m http.server 4173"
   },
   "devDependencies": {
-    "typescript": "^5.6.3"
+    "@types/node": "^22.9.0",
+    "@types/ws": "^8.18.1",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3",
+    "ws": "^8.21.3"
   }
 }
