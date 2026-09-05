@@ -1,5 +1,14 @@
 # Device protocol (v1.1)
 
+> **Canonical copy.** This repo (`Mulligan`) owns this document. The device
+> implementation lives separately, in `mulligan-device` (Python), which
+> carries its own copy for local reference — but that copy is a mirror, not
+> a source. Any protocol change is made here first, in this file, then
+> re-copied over to `mulligan-device` by hand. If the project is ever
+> open-sourced, this doc should move out to its own small `mulligan-protocol`
+> repo that both sides depend on directly instead of one side copying from
+> the other — but that's a later reorganization, not a current TODO.
+
 The contract between the Raspberry Pi (device) and the phone app. Precise
 enough that the device side should be implementable from this document
 alone, without reading the app's source. If you're implementing the Pi and

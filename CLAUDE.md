@@ -124,6 +124,16 @@ Goal: when the Pi emits its first real shot, nothing on the app side should need
 
 Handicap, challenge modes, and ghost multiplayer stay in the feature runway, after M2b and M3.
 
+## What's next (read this before starting new work — 2026-09-05)
+
+**The app is done pending real data.** M3 shipped 179 passing tests, `verify-m0.ts` green, tagged `m3`. Every remaining decision in *this* repo is downstream of measurements that don't exist yet — there is no more engineering to do here until a real range session happens. If you're a future session picking this repo back up: don't go looking for the next feature to build. Read this section first.
+
+- **M2b (surface-aware rollout) is blocked on the range session, not on engineering.** `estimateRollout()` is still the M1 placeholder. The aero model saturates above roughly 6000rpm, so predicted descent angle comes out ~43–44° for all twelve clubs — a driver and a wedge land at the same angle in the model, which means a real per-surface rollout built on that input literally cannot distinguish a driver's run-out from a wedge stopping on the spot. Building it now would be tuning a rollout model against noise, not physics. `docs/range-session.md` is the unblocking step, in order: `npm run calibrate` (fits `AeroParams` to real carry/apex/descent), then `npm run rescale-clubs` (fits the twelve club presets to the same real clubs), then a **deliberate, reviewed** regeneration of the golden fixture — never automatic, both tools print for review and never write.
+- **Also unresolved from the same range data: `DEFAULT_DISPERSION` for wedges is too tight.** A full lob wedge currently finishes ~13ft from target where a real amateur is 25–35ft (see the M2a.1 section above for the full story). `partialSwingPenalty` is compensating for a baseline problem rather than fixing it — it was deliberately left alone rather than tuned further blind. The wedge-spread step in `docs/range-session.md` (`DISPERSION_MEASUREMENTS`) exists specifically to fix this with real numbers instead of another guess.
+- **Active work has moved to a separate repo: `mulligan-device` (Python, `~/Documents/mulligan-device`).** It measures ball speed and vertical launch angle from a single strobed photograph containing several exposures of the ball, and will eventually send those over the WebSocket protocol in `docs/device-protocol.md` (this repo owns the canonical copy — see the note at the top of that file). It never simulates ball flight, never knows about clubs, and never computes carry — that boundary is the protocol doc's own rule (*"a value the device computed but didn't measure is a lie the app can't distinguish from a measurement"*). When it's ready, it connects to this app as a `NetworkShotSource` and **nothing in this repo needs to change** — that was the entire point of M3.
+
+**Do not touch `@mulligan/physics`, `AeroParams`, or `estimateRollout()`** until real range data exists to justify a change. If you're tempted to "improve" the rollout placeholder or retune dispersion without that data, don't — re-read the M2a.1 section above for what happened last time a model got tuned against itself instead of reality.
+
 ## Tech stack (decided 2026-09-01, for v1 game)
 npm workspaces monorepo:
 ```
