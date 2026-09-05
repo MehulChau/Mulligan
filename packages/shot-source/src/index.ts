@@ -27,5 +27,16 @@ export type { ShotFidelity, SimulatedShotSourceOptions } from "./sources/Simulat
 export { SimulatedShotSource } from "./sources/SimulatedShotSource";
 export { ReplayShotSource } from "./sources/ReplayShotSource";
 
+export type {
+  ConnectionState,
+  DeviceInfo,
+  DeviceStatus,
+  NetworkShotSourceOptions,
+  ProtocolVersion,
+  WebSocketFactory,
+  WebSocketLike,
+} from "./sources/NetworkShotSource";
+export { NetworkShotSource } from "./sources/NetworkShotSource";
+
 export type { ShotLogEntry, KeyValueStore } from "./log/ShotLog";
 export { ShotLog, createMemoryStore } from "./log/ShotLog";
