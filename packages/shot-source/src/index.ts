@@ -40,3 +40,12 @@ export { NetworkShotSource } from "./sources/NetworkShotSource";
 
 export type { ShotLogEntry, KeyValueStore } from "./log/ShotLog";
 export { ShotLog, createMemoryStore } from "./log/ShotLog";
+
+export type { SessionExport, ImportedSession } from "./log/sessionExport";
+export {
+  SESSION_EXPORT_FORMAT_VERSION,
+  exportSession,
+  sessionExportToJSON,
+  importSessionFromJSON,
+  loadImportedSessionIntoLog,
+} from "./log/sessionExport";

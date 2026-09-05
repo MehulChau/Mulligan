@@ -8,13 +8,17 @@ import {
   ShotLog,
   SimulatedShotSource,
   enrichShot,
+  exportSession,
   findClub,
+  importSessionFromJSON,
   isWedge,
+  loadImportedSessionIntoLog,
   mulberry32,
+  sessionExportToJSON,
   type ClubId,
   type RawShotEvent,
 } from "@mulligan/shot-source";
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } from "react";
 import { expectedCarryYds } from "./game/expectedCarry";
 import { DEFAULT_DEVICE_ADDRESS, createInitialState, gameReducer, type ShotHistoryEntry } from "./game/gameState";
 import { HoleCanvas } from "./game/HoleCanvas";
@@ -71,6 +75,7 @@ export default function App() {
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const [sourcesReady, setSourcesReady] = useState(false);
   const [swingError, setSwingError] = useState<string | null>(null);
+  const [sessionMessage, setSessionMessage] = useState<string | null>(null);
 
   useEffect(() => {
     const simulated = new SimulatedShotSource();
@@ -262,6 +267,56 @@ export default function App() {
     sessionIdRef.current = `session-${Date.now()}`;
   }
 
+  // A recorded session is the most valuable data this project has once
+  // real range shots are in it -- it must be able to leave the phone.
+  // Exports everything ShotLog knows about this session (every
+  // RawShotEvent/ShotEvent/provenance/rest position) plus session-level
+  // facts the log itself doesn't track: the aim zero and the simulator
+  // seed, if one was in use.
+  function handleExportSession(): void {
+    const log = shotLogRef.current;
+    if (!log) return;
+
+    const exported = exportSession(log, sessionIdRef.current, {
+      sessionZeroDeg: state.device.sessionZeroDeg,
+      simulatedSeed: simulatedRef.current?.seed,
+    });
+    const blob = new Blob([sessionExportToJSON(exported)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mulligan-session-${sessionIdRef.current}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+
+    setSessionMessage(`Exported ${exported.entries.length} stroke${exported.entries.length === 1 ? "" : "s"}.`);
+  }
+
+  // Loads a previously exported file's entries into this browser's actual
+  // ShotLog under their original session id -- the data-portability half
+  // of export: a session exported on one phone can be brought back in on
+  // another and handed to a ReplayShotSource there. Does not touch the
+  // current round in progress.
+  function handleImportSessionFile(e: ChangeEvent<HTMLInputElement>): void {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-importing the same filename later
+    if (!file) return;
+
+    file
+      .text()
+      .then((text) => {
+        const imported = importSessionFromJSON(text);
+        const log = shotLogRef.current;
+        if (log) loadImportedSessionIntoLog(imported, log);
+        setSessionMessage(
+          `Imported ${imported.entries.length} stroke${imported.entries.length === 1 ? "" : "s"} from session "${imported.sessionId}".`,
+        );
+      })
+      .catch((err) => {
+        setSessionMessage(err instanceof Error ? `Import failed: ${err.message}` : "Import failed.");
+      });
+  }
+
   const animating = state.pendingShot !== null;
   const canSwing = sourcesReady && !animating && state.phase === "shot";
   const controlsDisabled = animating || state.phase !== "shot";
@@ -272,7 +327,25 @@ export default function App() {
         <h1>
           Mulligan<span className="hole-name"> · {state.hole.name}</span>
         </h1>
+        <div className="session-tools">
+          <button type="button" className="session-tool-btn" onClick={handleExportSession}>
+            Export
+          </button>
+          <label className="session-tool-btn">
+            Import
+            <input type="file" accept="application/json" className="session-file-input" onChange={handleImportSessionFile} />
+          </label>
+        </div>
       </header>
+
+      {sessionMessage && (
+        <div className="session-message">
+          {sessionMessage}
+          <button type="button" className="session-message-dismiss" onClick={() => setSessionMessage(null)} aria-label="Dismiss">
+            ×
+          </button>
+        </div>
+      )}
 
       {state.phase !== "holed" && (
         <Hud

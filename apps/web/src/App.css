@@ -86,6 +86,7 @@ body {
 .app-header {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   margin-bottom: 6px;
   flex-shrink: 0;
 }
@@ -98,6 +99,57 @@ body {
 .hole-name {
   color: var(--sub);
   font-weight: 600;
+}
+
+/* Session export/import -- touched rarely (end of a range session, or
+   moving data to another phone), so kept as small text links, not buttons
+   competing with the actual game controls. */
+.session-tools {
+  display: flex;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.session-tool-btn {
+  position: relative;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sub);
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.session-file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+.session-message {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--chipbg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+  font-size: 11.5px;
+  color: var(--sub);
+  flex-shrink: 0;
+}
+.session-message-dismiss {
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1;
+  background: none;
+  border: none;
+  color: var(--sub);
+  cursor: pointer;
+  padding: 0 2px;
 }
 
 .hud {
