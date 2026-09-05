@@ -2,7 +2,7 @@ import { DEFAULT_AERO } from "@mulligan/physics";
 import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { computeResiduals, fitAeroParams } from "./fit";
-import { MEASUREMENTS } from "./measurements";
+import { DISPERSION_MEASUREMENTS, MEASUREMENTS } from "./measurements";
 
 function fmt(n: number | undefined): string {
   if (n === undefined) return "—".padStart(8);
@@ -10,17 +10,30 @@ function fmt(n: number | undefined): string {
 }
 
 function main(): void {
-  console.log(`Calibration: ${MEASUREMENTS.length} measurement(s) loaded from calibration/measurements.ts.`);
+  console.log(`Calibration: ${MEASUREMENTS.length} measurement(s), ${DISPERSION_MEASUREMENTS.length} dispersion group(s) loaded.`);
 
   if (MEASUREMENTS.length === 0) {
     console.log("");
-    console.log("No measurements yet — nothing to fit.");
-    console.log("Add real range data to MEASUREMENTS (see src/calibration/measurements.ts)");
-    console.log("and re-run `npm run calibrate`.");
+    console.log("Nothing to fit yet — MEASUREMENTS is empty, so this only reports DEFAULT_AERO unchanged.");
+    console.log("");
+    console.log("Bring back from the range: 3 clubs (driver, 7-iron, a wedge), 5 numbers");
+    console.log("per club (ball speed, launch angle, carry, apex, descent angle), ~5-10");
+    console.log("shots each. Full checklist: docs/range-session.md.");
+    console.log("");
+    console.log("Add rows to MEASUREMENTS in src/calibration/measurements.ts (it has a");
+    console.log("commented example) and re-run `npm run calibrate`.");
     console.log("");
     console.log("Current DEFAULT_AERO (unchanged):");
     console.log(JSON.stringify(DEFAULT_AERO, null, 2));
     return;
+  }
+
+  if (DISPERSION_MEASUREMENTS.length === 0) {
+    console.log("");
+    console.log("Note: DISPERSION_MEASUREMENTS is still empty -- this run only fits carry/apex/");
+    console.log("descent (AeroParams), not shot-to-shot spread. Wedge dispersion at more than");
+    console.log("one swing fraction is what @mulligan/shot-source's partialSwingPenalty needs");
+    console.log("to stop being a guess -- see the wedge-spread step in docs/range-session.md.");
   }
 
   const before = computeResiduals(MEASUREMENTS, DEFAULT_AERO);

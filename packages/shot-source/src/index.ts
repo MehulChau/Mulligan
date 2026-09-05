@@ -11,8 +11,8 @@ export {
   scaleClubForSwing,
   scaleDispersionForSwing,
 } from "./swing";
-export type { Measurement } from "./calibration/measurements";
-export { MEASUREMENTS } from "./calibration/measurements";
+export type { Measurement, CarrySummary, DispersionMeasurement } from "./calibration/measurements";
+export { MEASUREMENTS, DISPERSION_MEASUREMENTS } from "./calibration/measurements";
 export type { ClubResidual, FitResiduals } from "./calibration/fit";
 export { computeResiduals, fitAeroParams } from "./calibration/fit";
 
