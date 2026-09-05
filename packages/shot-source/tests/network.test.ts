@@ -54,6 +54,10 @@ const HELLO_V1 = {
   capabilities: ["ballSpeed", "launch"],
 };
 
+function helloWithBoot(bootId: string): Record<string, unknown> {
+  return { ...HELLO_V1, protocolVersion: { major: 1, minor: 1 }, bootId };
+}
+
 function shotMessage(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
   return {
     type: "shot",
@@ -211,6 +215,61 @@ describe("NetworkShotSource", () => {
     sockets[0]!.simulateMessage(shotMessage({ seq: 5 }));
     sockets[0]!.simulateMessage(shotMessage({ seq: 3 }));
 
+    expect(received).toHaveLength(1);
+  });
+
+  it("without a bootId (a v1.0 device), falls back to seq-only dedup and logs the fallback exactly once", async () => {
+    const received: RawShotEvent[] = [];
+    source.onShot((s) => received.push(s));
+    await source.start();
+    sockets[0]!.simulateMessage(HELLO_V1); // no bootId
+    sockets[0]!.simulateMessage(shotMessage({ seq: 1 }));
+
+    expect(received).toHaveLength(1);
+    expect(logs.filter((l) => l.includes("did not send hello.bootId"))).toHaveLength(1);
+
+    // a second hello (e.g. a plain reconnect) with the same absence of bootId must not re-log
+    sockets[0]!.simulateMessage(HELLO_V1);
+    expect(logs.filter((l) => l.includes("did not send hello.bootId"))).toHaveLength(1);
+  });
+
+  it("exposes bootId on DeviceInfo when the device sends one", async () => {
+    await source.start();
+    sockets[0]!.simulateMessage(helloWithBoot("boot-1"));
+    expect(source.getDeviceInfo()?.bootId).toBe("boot-1");
+  });
+
+  it("a hello with a new bootId resets dedup -- a genuine reboot, not a resend, even without a reconnect", async () => {
+    const received: RawShotEvent[] = [];
+    source.onShot((s) => received.push(s));
+    await source.start();
+
+    sockets[0]!.simulateMessage(helloWithBoot("boot-1"));
+    sockets[0]!.simulateMessage(shotMessage({ seq: 5 }));
+    expect(received).toHaveLength(1);
+
+    // device reboots without the connection ever dropping: new bootId, seq restarts at 0
+    sockets[0]!.simulateMessage(helloWithBoot("boot-2"));
+    sockets[0]!.simulateMessage(shotMessage({ seq: 0 }));
+    expect(received).toHaveLength(2); // NOT dropped as a duplicate/out-of-order relative to seq 5
+
+    // but a genuine duplicate within the new boot is still dropped
+    sockets[0]!.simulateMessage(shotMessage({ seq: 0 }));
+    expect(received).toHaveLength(2);
+  });
+
+  it("a hello repeating the same bootId (a plain reconnect) does NOT reset dedup", async () => {
+    const received: RawShotEvent[] = [];
+    source.onShot((s) => received.push(s));
+    await source.start();
+
+    sockets[0]!.simulateMessage(helloWithBoot("boot-1"));
+    sockets[0]!.simulateMessage(shotMessage({ seq: 5 }));
+    expect(received).toHaveLength(1);
+
+    // same device, same boot, hello repeated (as if the socket briefly reconnected)
+    sockets[0]!.simulateMessage(helloWithBoot("boot-1"));
+    sockets[0]!.simulateMessage(shotMessage({ seq: 5 })); // a resend of the same shot
     expect(received).toHaveLength(1);
   });
 

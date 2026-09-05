@@ -92,14 +92,18 @@ interface Anchor {
 }
 
 /**
- * Launch angle differences between players are real but noisier and less
- * durable than ball speed differences -- one measured shot's launch angle
- * is sensitive to attack angle and strike quality in a way ball speed
- * mostly isn't. So the observed launch delta at each anchor is damped by
- * this factor before being applied anywhere, including at the anchor
- * clubs themselves -- the printed table intentionally does not just
- * echo back your raw measured launch numbers. The tool prints both the
- * raw and damped numbers at each anchor so this is never hidden.
+ * Applies ONLY to the nine clubs you didn't measure -- not the three
+ * anchors. A launch delta observed on a club you actually hit is real
+ * evidence (docs/range-session.md already has you take the median across
+ * 8-10 shots, not one), so an anchor club's proposed launch is the raw
+ * measured delta at full strength, undamped. Extrapolating that same
+ * delta to a club you never hit is a different, weaker claim -- launch
+ * angle differences between players are real but noisier and less
+ * durable than ball speed differences (attack angle and strike quality
+ * shift it in a way ball speed mostly isn't shifted by), so the delta
+ * used for interpolation/extrapolation between and beyond anchors is
+ * damped by this factor. The tool prints both the raw and damped numbers
+ * at each anchor so this is never hidden.
  */
 const LAUNCH_DELTA_DAMPING = 0.5;
 
@@ -127,6 +131,18 @@ function correctionAt(index: number, anchors: Anchor[], pick: (a: Anchor) => num
     }
   }
   return pick(anchors[anchors.length - 1]!); // unreachable given the bounds checks above
+}
+
+/**
+ * The launch delta actually applied to a club: the raw measured delta,
+ * full strength, at an anchor club itself; the damped, interpolated/
+ * extrapolated delta everywhere else. See LAUNCH_DELTA_DAMPING's doc
+ * comment for why these two cases get different treatment.
+ */
+function launchDeltaAt(index: number, anchors: Anchor[]): number {
+  const exact = anchors.find((a) => a.index === index);
+  if (exact) return exact.launchDeltaDeg;
+  return correctionAt(index, anchors, (a) => a.launchDeltaDeg) * LAUNCH_DELTA_DAMPING;
 }
 
 function main(): void {
@@ -163,7 +179,7 @@ function main(): void {
     console.log(
       `  ${a.clubId.padEnd(6)} speed ratio ${a.speedRatio.toFixed(3)}x` +
         `   launch delta ${a.launchDeltaDeg >= 0 ? "+" : ""}${a.launchDeltaDeg.toFixed(1)}deg` +
-        ` (damped ${LAUNCH_DELTA_DAMPING}x -> ${(a.launchDeltaDeg * LAUNCH_DELTA_DAMPING >= 0 ? "+" : "") + (a.launchDeltaDeg * LAUNCH_DELTA_DAMPING).toFixed(1)}deg)` +
+        ` (used at full strength here; damped ${LAUNCH_DELTA_DAMPING}x -> ${(a.launchDeltaDeg * LAUNCH_DELTA_DAMPING >= 0 ? "+" : "") + (a.launchDeltaDeg * LAUNCH_DELTA_DAMPING).toFixed(1)}deg only when carried to OTHER clubs)` +
         `   baseline ${baseline.ballSpeedMph}mph / ${baseline.launchDeg}deg`,
     );
   }
@@ -173,7 +189,7 @@ function main(): void {
   console.log("club        speed(mph)  launch(deg)  spin(rpm)   note");
   const proposed: ClubProfile[] = CLUBS.map((baseline, index) => {
     const speedRatio = correctionAt(index, anchors, (a) => a.speedRatio);
-    const launchDeltaDeg = correctionAt(index, anchors, (a) => a.launchDeltaDeg) * LAUNCH_DELTA_DAMPING;
+    const launchDeltaDeg = launchDeltaAt(index, anchors);
 
     const ballSpeedMph = baseline.ballSpeedMph * speedRatio;
     const launchDeg = baseline.launchDeg + launchDeltaDeg;

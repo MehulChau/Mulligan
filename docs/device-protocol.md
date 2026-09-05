@@ -1,4 +1,4 @@
-# Device protocol (v1)
+# Device protocol (v1.1)
 
 The contract between the Raspberry Pi (device) and the phone app. Precise
 enough that the device side should be implementable from this document
@@ -48,7 +48,9 @@ number }`.
   minor bump — a `major` bump is reserved for changes that remove or
   redefine an existing field's meaning.
 
-This document specifies **v1.0**.
+This document specifies **v1.1** (v1.0 plus `hello.bootId` — an added
+optional-in-practice field, which is exactly what a minor bump is for; see
+`bootId` below).
 
 ## Messages
 
@@ -60,13 +62,26 @@ Every message has a `type` field.
 ```json
 {
   "type": "hello",
-  "protocolVersion": { "major": 1, "minor": 0 },
+  "protocolVersion": { "major": 1, "minor": 1 },
   "deviceId": "mulligan-pi-01",
+  "bootId": "b7e1a9f0-6c2e-4f3a-9e11-2a6d9c9c1234",
   "firmwareVersion": "0.3.1",
   "capabilities": ["ballSpeed", "launch"]
 }
 ```
 
+- **`deviceId` is stable across reboots — it names the physical unit.
+  `bootId` is not: the device regenerates it fresh on every boot** (a
+  UUID or a boot timestamp are both fine; the app treats it as an opaque
+  string and only ever checks it for equality, never parses it). This is
+  the field that lets the app tell "the device reconnected after a WiFi
+  hiccup" (same `bootId`) apart from "the device actually rebooted" (a
+  new `bootId`) — see `seq` below for why that distinction matters.
+  **Required** for a v1.1 device. A device that omits it is treated as
+  v1.0 for dedup purposes only — see `seq`'s note on the fallback; it
+  does not trigger a version-mismatch refusal, since a missing
+  optional-in-practice field isn't the kind of change the major/minor
+  split exists to gate.
 - `capabilities` is a list drawn from the same five fields
   `RawShotEvent`/`ShotEvent` provenance already uses: `"ballSpeed"`,
   `"launch"`, `"spin"`, `"spinAxis"`, `"startLine"`. It states which fields
@@ -102,8 +117,17 @@ Every message has a `type` field.
 
 - `seq` is a **monotonically increasing, per-device-boot** integer,
   starting at 0 (or 1 — the app does not require a specific start value,
-  only that it strictly increases). It exists so the app can detect and
-  drop a duplicate delivery after a reconnect.
+  only that it strictly increases within a boot). It exists so the app
+  can detect and drop a duplicate delivery after a reconnect. The app
+  keys deduplication on **`(bootId, seq)`, not `seq` alone**: a `hello`
+  carrying a `bootId` different from the one already in use resets the
+  app's dedup tracker, because that's what a `bootId` change means — a
+  genuine reboot, where `seq` legitimately restarts at 0 and must not be
+  mistaken for a replay of the shots from before the reboot. The same
+  `bootId` with a `seq` at or below the last one seen is a real duplicate
+  and is dropped exactly as before. For a device that never sends
+  `bootId` (v1.0), the app falls back to plain `seq`-only dedup and logs
+  once that this is unreliable across a reboot it can no longer detect.
 - Every field after `timestamp` is optional, exactly like `RawShotEvent`.
   **Only send a field the device actually measured on this swing.** If
   `capabilities` didn't advertise a field, never send it — see "What the
@@ -250,9 +274,13 @@ be driven interactively from the terminal it runs in:
   keyboard.
 - Press `m` to enter misbehavior mode, which cycles through: sending
   malformed (non-JSON) frames, resending the previous `seq` (a duplicate),
-  sending an out-of-range value, and dropping the connection outright
-  (closing the socket without a close handshake, to simulate a WiFi
-  hiccup rather than a clean disconnect).
+  sending an out-of-range value, dropping the connection outright (closing
+  the socket without a close handshake, to simulate a WiFi hiccup rather
+  than a clean disconnect), and simulating a reboot (a new `bootId`, `seq`
+  restarted at 0, broadcast over the **same still-open connection** —
+  deliberately not also dropping the socket, since that path is already
+  covered by the dropped-connection case above; this one isolates whether
+  `bootId` alone is enough to tell a reboot apart from a resend).
 - Press `q` to quit.
 
 Two environment variables cover what a keyboard can't:
@@ -296,21 +324,6 @@ Honest list of the places this document is underspecified — these are
 exactly the spots a real Pi implementation is likely to disagree with the
 app about, because the app had to guess.
 
-- **Sequence numbers and device reboots.** `seq` is specified as
-  monotonically increasing "per device boot," but nothing in `hello`
-  identifies *which* boot a connection belongs to. If the Pi loses power
-  mid-round and reboots, its `seq` counter resets to 0/1 while the app's
-  dedup tracker still remembers a much higher `seq` from before the
-  reboot — every shot after a mid-round reboot would be silently dropped
-  as a false duplicate. `NetworkShotSource` as implemented does not solve
-  this; it just resets its dedup tracker when the *player* restarts the
-  app's connection (`start()`), not when the device reboots, because there
-  is currently no way to tell the two apart from the wire alone. A real
-  fix needs either a `bootId`/session nonce in `hello` that changes across
-  reboots (so the app can key dedup on `(bootId, seq)` instead of `seq`
-  alone), or a documented rule that the device must persist its `seq`
-  counter across a reboot. Not fixed here — flagged for the next revision
-  of this document before real hardware ships.
 - **`status` cadence is a recommendation, not a rule.** "Every 2-5s" is a
   guess at something reasonable for a Pi to produce and a phone to receive
   without either spamming the link or leaving the player looking at stale

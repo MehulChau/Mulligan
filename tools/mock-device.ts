@@ -8,6 +8,7 @@
  * Run: npm run mock-device
  * Keys: [Enter/s] shot   [n] toggle auto-fire   [m] misbehave   [q] quit
  */
+import { randomUUID } from "node:crypto";
 import readline from "node:readline";
 import { WebSocketServer, type WebSocket as WsClient } from "ws";
 
@@ -37,13 +38,18 @@ const AUTO_INTERVAL_SEC = Number(process.env.MOCK_DEVICE_AUTOSTART_SEC ?? proces
 const START_LINE_OFFSET_DEG =
   process.env.MOCK_DEVICE_START_LINE_OFFSET_DEG !== undefined ? Number(process.env.MOCK_DEVICE_START_LINE_OFFSET_DEG) : null;
 
-const PROTOCOL_VERSION = { major: 1, minor: 0 };
-const DEVICE_ID = "mock-device-01";
+const PROTOCOL_VERSION = { major: 1, minor: 1 };
+const DEVICE_ID = "mock-device-01"; // stable across "reboots" -- see bootId below
 const FIRMWARE_VERSION = "mock-0.1.0";
 // Matches the real v1 hardware exactly -- see docs/device-protocol.md.
 // (Widened to include "startLine" only under START_LINE_OFFSET_DEG -- see its comment above.)
 const CAPABILITIES = START_LINE_OFFSET_DEG !== null ? ["ballSpeed", "launch", "startLine"] : ["ballSpeed", "launch"];
 
+// Regenerated every "reboot" (see the reboot misbehavior below) -- deviceId
+// names the physical unit and never changes, bootId does. This is what
+// lets NetworkShotSource tell a genuine reboot apart from a plain
+// reconnect. See docs/device-protocol.md's `hello`/`seq` sections.
+let bootId = randomUUID();
 let seq = 0;
 let lastShotPayload: Record<string, unknown> | null = null;
 const clients = new Set<WsClient>();
@@ -53,6 +59,17 @@ function broadcast(message: Record<string, unknown>): void {
   for (const client of clients) {
     if (client.readyState === client.OPEN) client.send(json);
   }
+}
+
+function helloMessage(): Record<string, unknown> {
+  return {
+    type: "hello",
+    protocolVersion: PROTOCOL_VERSION,
+    deviceId: DEVICE_ID,
+    bootId,
+    firmwareVersion: FIRMWARE_VERSION,
+    capabilities: CAPABILITIES,
+  };
 }
 
 function randomShot(): Record<string, unknown> {
@@ -86,15 +103,7 @@ wss.on("connection", (ws) => {
   clients.add(ws);
   console.log("app connected");
 
-  ws.send(
-    JSON.stringify({
-      type: "hello",
-      protocolVersion: PROTOCOL_VERSION,
-      deviceId: DEVICE_ID,
-      firmwareVersion: FIRMWARE_VERSION,
-      capabilities: CAPABILITIES,
-    }),
-  );
+  ws.send(JSON.stringify(helloMessage()));
   ws.send(JSON.stringify({ type: "status", ready: true }));
 
   ws.on("message", (data) => {
@@ -149,7 +158,7 @@ function toggleAuto(): void {
   }
 }
 
-const MISBEHAVIORS = ["malformed", "duplicate", "out-of-range", "dropped-connection"] as const;
+const MISBEHAVIORS = ["malformed", "duplicate", "out-of-range", "dropped-connection", "reboot"] as const;
 let misbehaviorIndex = 0;
 
 function misbehave(): void {
@@ -181,6 +190,19 @@ function misbehave(): void {
     case "dropped-connection":
       console.log("misbehaving: dropping all connections without a close handshake (simulates a WiFi hiccup)");
       for (const client of clients) client.terminate();
+      return;
+
+    case "reboot":
+      // Deliberately does NOT touch the connection -- a real reboot would
+      // drop it too (already covered by dropped-connection above), but
+      // this isolates the one thing that's actually new: can the app tell
+      // a reboot apart from a resend using bootId alone, with no
+      // reconnect to lean on.
+      bootId = randomUUID();
+      seq = 0;
+      lastShotPayload = null;
+      console.log(`misbehaving: simulating a reboot (new bootId=${bootId}, seq restarted at 0) without dropping the connection`);
+      broadcast(helloMessage());
       return;
   }
 }
