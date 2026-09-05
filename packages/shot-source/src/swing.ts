@@ -29,8 +29,31 @@ export interface SwingScalingParams {
   spinExponent: number;
   /** Degrees of launch added per unit of fraction below full -- a shorter swing tends to launch a bit higher relative to its speed. */
   launchDegPerFractionBelowFull: number;
-  /** Dispersion sigmas scale by fraction^exponent -- a shorter swing is more repeatable than a full one. */
+  /**
+   * Scales the two *absolute-degree* launch-variance sigmas
+   * (`launchAngleNoiseSigmaDeg`, `launchAngleThinFatBiasDeg`) by
+   * fraction^exponent. Legitimate to shrink with a gentler swing: a given
+   * physical strike-angle wobble is a smaller absolute launch-angle error
+   * at lower clubhead speed.
+   */
   dispersionExponent: number;
+  /**
+   * Grows the *percentage/angle* sigmas (`ballSpeedNoiseSigmaPct`,
+   * `spinNoiseSigmaPct`, `startLineSigmaDeg`, `spinAxisSigmaDeg`) back up as
+   * the swing gets shorter, instead of shrinking them. These are relative
+   * measures, so they already produce a smaller absolute error on a
+   * shorter shot for free (2% of a slower ball speed, or 2 degrees of a
+   * shorter carry, is already a small yardage/lateral miss) -- multiplying
+   * them by the swing fraction on top of that double-counts the shrinkage
+   * and makes a partial wedge preternaturally precise. Partial-swing
+   * distance control is, if anything, the hardest shot in golf to control,
+   * not the easiest. At `MIN_SWING_FRACTION` these sigmas are multiplied by
+   * `1 + partialSwingPenalty`; at a full swing they're unchanged. This
+   * number is a placeholder guess, not derived from physics -- tune it
+   * against real range dispersion data once it exists, same posture as
+   * `AeroParams`.
+   */
+  partialSwingPenalty: number;
 }
 
 export const DEFAULT_SWING_SCALING: SwingScalingParams = {
@@ -38,6 +61,7 @@ export const DEFAULT_SWING_SCALING: SwingScalingParams = {
   spinExponent: 1,
   launchDegPerFractionBelowFull: 4,
   dispersionExponent: 1,
+  partialSwingPenalty: 4,
 };
 
 /** The club profile a partial swing would produce -- ball speed and spin scaled down, launch nudged up. Clamped to [MIN_SWING_FRACTION, 1]. */
@@ -55,21 +79,33 @@ export function scaleClubForSwing(
   };
 }
 
-/** Dispersion sigmas shrunk for a partial swing -- a half-swing wedge is more repeatable, not just shorter. */
+/**
+ * Dispersion adjusted for a partial swing. NOT a uniform shrink -- see
+ * `SwingScalingParams` for why the percentage/angle sigmas
+ * (`ballSpeedNoiseSigmaPct`, `spinNoiseSigmaPct`, `startLineSigmaDeg`,
+ * `spinAxisSigmaDeg`) are grown, not shrunk, as the swing gets shorter,
+ * while the absolute-degree launch sigmas are shrunk as before.
+ */
 export function scaleDispersionForSwing(
   dispersion: DispersionParams,
   fraction: number,
   params: SwingScalingParams = DEFAULT_SWING_SCALING,
 ): DispersionParams {
   const f = clampSwingFraction(fraction);
-  const scale = Math.pow(f, params.dispersionExponent);
+
+  const launchScale = Math.pow(f, params.dispersionExponent);
+
+  const penaltyRange = FULL_SWING_FRACTION - MIN_SWING_FRACTION;
+  const softness = penaltyRange > 0 ? (FULL_SWING_FRACTION - f) / penaltyRange : 0;
+  const relativePenalty = 1 + params.partialSwingPenalty * softness;
+
   return {
     ...dispersion,
-    ballSpeedNoiseSigmaPct: dispersion.ballSpeedNoiseSigmaPct * scale,
-    launchAngleNoiseSigmaDeg: dispersion.launchAngleNoiseSigmaDeg * scale,
-    launchAngleThinFatBiasDeg: dispersion.launchAngleThinFatBiasDeg * scale,
-    spinNoiseSigmaPct: dispersion.spinNoiseSigmaPct * scale,
-    startLineSigmaDeg: dispersion.startLineSigmaDeg * scale,
-    spinAxisSigmaDeg: dispersion.spinAxisSigmaDeg * scale,
+    ballSpeedNoiseSigmaPct: dispersion.ballSpeedNoiseSigmaPct * relativePenalty,
+    spinNoiseSigmaPct: dispersion.spinNoiseSigmaPct * relativePenalty,
+    startLineSigmaDeg: dispersion.startLineSigmaDeg * relativePenalty,
+    spinAxisSigmaDeg: dispersion.spinAxisSigmaDeg * relativePenalty,
+    launchAngleNoiseSigmaDeg: dispersion.launchAngleNoiseSigmaDeg * launchScale,
+    launchAngleThinFatBiasDeg: dispersion.launchAngleThinFatBiasDeg * launchScale,
   };
 }

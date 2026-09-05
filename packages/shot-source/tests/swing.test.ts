@@ -69,16 +69,34 @@ describe("scaleDispersionForSwing", () => {
     expect(scaled).toEqual(DEFAULT_DISPERSION);
   });
 
-  it("shrinks the noise/sigma fields for a partial swing, without touching quality shaping", () => {
+  it("shrinks the absolute-degree launch sigmas for a partial swing -- these are legitimately easier to control at lower clubhead speed", () => {
     const scaled = scaleDispersionForSwing(DEFAULT_DISPERSION, 0.5);
-    expect(scaled.ballSpeedNoiseSigmaPct).toBeCloseTo(DEFAULT_DISPERSION.ballSpeedNoiseSigmaPct * 0.5);
     expect(scaled.launchAngleNoiseSigmaDeg).toBeCloseTo(DEFAULT_DISPERSION.launchAngleNoiseSigmaDeg * 0.5);
-    expect(scaled.spinNoiseSigmaPct).toBeCloseTo(DEFAULT_DISPERSION.spinNoiseSigmaPct * 0.5);
-    expect(scaled.startLineSigmaDeg).toBeCloseTo(DEFAULT_DISPERSION.startLineSigmaDeg * 0.5);
-    expect(scaled.spinAxisSigmaDeg).toBeCloseTo(DEFAULT_DISPERSION.spinAxisSigmaDeg * 0.5);
-    // strikeQualitySpread and the quality-blend factors are left alone --
-    // "shorter swing is more repeatable" narrows dispersion sigmas, it
-    // doesn't change how strike quality itself is modeled.
+    expect(scaled.launchAngleThinFatBiasDeg).toBeCloseTo(DEFAULT_DISPERSION.launchAngleThinFatBiasDeg * 0.5);
+  });
+
+  it("GROWS the percentage/angle sigmas for a partial swing -- they already shrink in absolute terms for free, so naively multiplying them by the fraction double-counts that and makes a partial wedge preternaturally precise (the M2a.1 bug)", () => {
+    const scaled = scaleDispersionForSwing(DEFAULT_DISPERSION, 0.5);
+    expect(scaled.ballSpeedNoiseSigmaPct).toBeGreaterThan(DEFAULT_DISPERSION.ballSpeedNoiseSigmaPct);
+    expect(scaled.spinNoiseSigmaPct).toBeGreaterThan(DEFAULT_DISPERSION.spinNoiseSigmaPct);
+    expect(scaled.startLineSigmaDeg).toBeGreaterThan(DEFAULT_DISPERSION.startLineSigmaDeg);
+    expect(scaled.spinAxisSigmaDeg).toBeGreaterThan(DEFAULT_DISPERSION.spinAxisSigmaDeg);
+  });
+
+  it("the percentage/angle penalty shrinks monotonically as the swing gets fuller, reaching 1x (no change) at a full swing", () => {
+    let previous = Infinity;
+    for (let f = MIN_SWING_FRACTION; f < FULL_SWING_FRACTION; f += 0.1) {
+      const scaled = scaleDispersionForSwing(DEFAULT_DISPERSION, f);
+      expect(scaled.startLineSigmaDeg).toBeLessThanOrEqual(previous);
+      previous = scaled.startLineSigmaDeg;
+    }
+    expect(scaleDispersionForSwing(DEFAULT_DISPERSION, FULL_SWING_FRACTION).startLineSigmaDeg).toBeCloseTo(
+      DEFAULT_DISPERSION.startLineSigmaDeg,
+    );
+  });
+
+  it("leaves quality shaping alone -- the penalty only touches noise/dispersion sigmas, not how strike quality itself is modeled", () => {
+    const scaled = scaleDispersionForSwing(DEFAULT_DISPERSION, 0.5);
     expect(scaled.strikeQualitySpread).toBe(DEFAULT_DISPERSION.strikeQualitySpread);
     expect(scaled.ballSpeedBaseFactor).toBe(DEFAULT_DISPERSION.ballSpeedBaseFactor);
     expect(scaled.ballSpeedQualityFactor).toBe(DEFAULT_DISPERSION.ballSpeedQualityFactor);
