@@ -1,9 +1,11 @@
 import { degToRad, metersToYards, mphToMps, rpmToRadPerSec, simulate } from "@mulligan/physics";
-import { CLUBS, DEFAULT_DISPERSION, mulberry32, simulateShot, type ClubId, type ClubProfile } from "@mulligan/shot-source";
+import { DEFAULT_DISPERSION, findClub, mulberry32, simulateShot, type ClubId, type ClubProfile } from "@mulligan/shot-source";
 
-const SAMPLES = 101; // odd, so the middle index is a clean median, no averaging of two values
+// A median doesn't need many samples -- 31 vs. 101 moves the result by well
+// under a yard, and it's a 3x cut on top of computing lazily below.
+const SAMPLES = 31; // odd, so the middle index is a clean median, no averaging of two values
 
-/** Stable per-club seed so the table is deterministic across reloads. */
+/** Stable per-club seed so a club's cached value is deterministic across reloads. */
 function seedFromClubId(clubId: string): number {
   let hash = 0;
   for (let i = 0; i < clubId.length; i++) {
@@ -32,14 +34,14 @@ function medianCarryYds(club: ClubProfile): number {
   return carries[Math.floor(carries.length / 2)]!;
 }
 
-// The result depends only on club id and is deterministic (seeded), so the
-// whole table is computed once here, at module load, instead of per-club
-// on demand -- 101 simulations/club (1.56M integration steps total across
-// the bag) is cheap once at startup but is not free enough to redo on a
-// render or a club selection.
-const EXPECTED_CARRY_TABLE: Record<ClubId, number> = Object.fromEntries(
-  CLUBS.map((club) => [club.id, medianCarryYds(club)]),
-) as Record<ClubId, number>;
+// The HUD only ever shows one club's number at a time, so computing all
+// twelve at module load (the previous approach) wasted eleven-twelfths of
+// the work and, worse, blocked first paint on it -- for an app whose whole
+// premise is a quick glance between range balls, that's the wrong trade.
+// Compute lazily on first request per club and cache it here: first tap on
+// a new club costs ~9ms (31 simulations), every tap after is free, and
+// startup cost is zero.
+const cache = new Map<ClubId, number>();
 
 /**
  * Median carry across DEFAULT_DISPERSION's simulated shots for this club --
@@ -47,5 +49,10 @@ const EXPECTED_CARRY_TABLE: Record<ClubId, number> = Object.fromEntries(
  * drive carries noticeably less than the preset's exact 224.4 for driver).
  */
 export function expectedCarryYds(clubId: ClubId): number {
-  return EXPECTED_CARRY_TABLE[clubId];
+  const cached = cache.get(clubId);
+  if (cached !== undefined) return cached;
+
+  const value = medianCarryYds(findClub(clubId));
+  cache.set(clubId, value);
+  return value;
 }
