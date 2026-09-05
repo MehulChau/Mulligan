@@ -1,5 +1,5 @@
 import { degToRad } from "@mulligan/physics";
-import { HOLE_1, headingToward, resolveShot, surfaceAt } from "@mulligan/game";
+import { HOLE_1, headingToward, isPenaltySurface, resolvePutt, resolveShot, summarizeScore, surfaceAt } from "@mulligan/game";
 import {
   CLUBS,
   ManualShotSource,
@@ -7,6 +7,7 @@ import {
   SimulatedShotSource,
   enrichShot,
   findClub,
+  mulberry32,
   type RawShotEvent,
 } from "@mulligan/shot-source";
 import { useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -15,8 +16,10 @@ import { HoleCanvas } from "./game/HoleCanvas";
 import { createInitialState, gameReducer, type ShotHistoryEntry } from "./game/gameState";
 import { AimSlider } from "./ui/AimSlider";
 import { ClubPicker } from "./ui/ClubPicker";
+import { HoleCompleteSummary } from "./ui/HoleCompleteSummary";
 import { Hud } from "./ui/Hud";
 import { ManualEntryPanel } from "./ui/ManualEntryPanel";
+import { PuttingPanel } from "./ui/PuttingPanel";
 import { SourceModeToggle } from "./ui/SourceModeToggle";
 import "./App.css";
 
@@ -29,6 +32,7 @@ export default function App() {
   const simulatedRef = useRef<SimulatedShotSource | null>(null);
   const manualRef = useRef<ManualShotSource | null>(null);
   const shotLogRef = useRef<ShotLog | null>(null);
+  const puttingRngRef = useRef(mulberry32(Date.now()));
   const sessionIdRef = useRef<string>(`session-${Date.now()}`);
   const [sourcesReady, setSourcesReady] = useState(false);
   const [swingError, setSwingError] = useState<string | null>(null);
@@ -72,7 +76,7 @@ export default function App() {
 
   function handleSwing() {
     const log = shotLogRef.current;
-    if (!log || state.pendingShot || state.status !== "playing") return;
+    if (!log || state.pendingShot || state.phase !== "shot") return;
 
     try {
       let raw: RawShotEvent;
@@ -90,12 +94,16 @@ export default function App() {
       const shot = enrichShot(raw, state.selectedClubId);
       const result = resolveShot(state.hole, state.ballPos, aimHeadingRad, shot);
       const entry: ShotHistoryEntry = { clubId: state.selectedClubId, raw, shot, result };
+      const penalty = isPenaltySurface(result.restSurface) ? result.restSurface : null;
 
       setSwingError(null);
       dispatch({ type: "SWING_RESOLVED", entry });
       log.append({
         sessionId: sessionIdRef.current,
         timestamp: raw.timestamp,
+        strokeNumber: state.strokeCount + 1,
+        isPutt: false,
+        penalty,
         raw,
         shot,
         rest: result.rest,
@@ -109,6 +117,24 @@ export default function App() {
     }
   }
 
+  function handlePutt() {
+    const log = shotLogRef.current;
+    if (!log || state.phase !== "putting") return;
+
+    const result = resolvePutt(state.puttDistanceYds, puttingRngRef.current);
+    dispatch({ type: "PUTT_RESOLVED", result });
+    log.append({
+      sessionId: sessionIdRef.current,
+      timestamp: Date.now(),
+      strokeNumber: state.strokeCount + 1,
+      isPutt: true,
+      penalty: null,
+      puttDistanceBeforeYds: result.distanceBefore,
+      puttDistanceAfterYds: result.distanceAfter,
+      holed: result.holed,
+    });
+  }
+
   function handlePlayAgain() {
     dispatch({ type: "RESET", hole: HOLE, clubId: INITIAL_CLUB });
     setSwingError(null);
@@ -116,8 +142,8 @@ export default function App() {
   }
 
   const animating = state.pendingShot !== null;
-  const canSwing = sourcesReady && !animating && state.status === "playing";
-  const controlsDisabled = animating || state.status !== "playing";
+  const canSwing = sourcesReady && !animating && state.phase === "shot";
+  const controlsDisabled = animating || state.phase !== "shot";
 
   return (
     <div className="app">
@@ -127,19 +153,29 @@ export default function App() {
         </h1>
       </header>
 
-      <Hud
-        distanceToPinYds={distanceToPinYds}
-        surface={currentSurface}
-        shotNumber={state.shotHistory.length + 1}
-        selectedClub={selectedClub}
-        expectedCarryYds={clubExpectedCarry}
-        lastShot={
-          lastEntry
-            ? { carryYds: lastEntry.result.carryYds, totalYds: lastEntry.result.totalYds, provenance: lastEntry.shot.provenance }
-            : null
-        }
-        onGreenInShots={state.status === "on-green" ? state.shotHistory.length : null}
-      />
+      {state.phase !== "holed" && (
+        <Hud
+          distanceToPinYds={distanceToPinYds}
+          surface={currentSurface}
+          strokeCount={state.strokeCount}
+          par={state.hole.par}
+          selectedClub={selectedClub}
+          expectedCarryYds={clubExpectedCarry}
+          lastShot={
+            state.phase === "shot" && lastEntry
+              ? { carryYds: lastEntry.result.carryYds, totalYds: lastEntry.result.totalYds, provenance: lastEntry.shot.provenance }
+              : null
+          }
+          lastPenalty={state.lastPenalty}
+        />
+      )}
+
+      {state.phase === "holed" && (
+        <HoleCompleteSummary
+          breakdown={summarizeScore(state.strokesToGreen ?? state.strokeCount, state.strokeCount - (state.strokesToGreen ?? state.strokeCount), state.hole.par)}
+          onPlayAgain={handlePlayAgain}
+        />
+      )}
 
       <div className="canvas-wrap">
         <HoleCanvas
@@ -154,7 +190,7 @@ export default function App() {
         />
       </div>
 
-      {state.status === "playing" && (
+      {state.phase === "shot" && (
         <div className="controls">
           <SourceModeToggle
             mode={state.sourceMode}
@@ -171,6 +207,7 @@ export default function App() {
           <ClubPicker
             clubs={CLUBS}
             selectedClubId={state.selectedClubId}
+            surface={currentSurface}
             disabled={controlsDisabled}
             onSelect={(clubId) => dispatch({ type: "SELECT_CLUB", clubId })}
           />
@@ -201,12 +238,14 @@ export default function App() {
         </div>
       )}
 
-      {state.status === "on-green" && (
-        <div className="controls">
-          <button type="button" className="hit" onClick={handlePlayAgain}>
-            Play again
-          </button>
-        </div>
+      {state.phase === "putting" && (
+        <PuttingPanel
+          puttDistanceYds={state.puttDistanceYds}
+          puttAttempts={state.puttAttempts}
+          lastPuttResult={state.lastPuttResult}
+          disabled={!sourcesReady}
+          onPutt={handlePutt}
+        />
       )}
     </div>
   );

@@ -2,7 +2,7 @@ import type { ShotLog } from "../log/ShotLog";
 import type { RawShotEvent } from "../types";
 import { BaseShotSource } from "./ShotSource";
 
-/** Replays a previously logged session's raw shots back, one per next() call. */
+/** Replays a previously logged session's raw ball-flight shots back, one per next() call. Putts aren't part of this replay -- they carry no RawShotEvent. */
 export class ReplayShotSource extends BaseShotSource {
   readonly id = "replay";
   readonly label: string;
@@ -12,7 +12,10 @@ export class ReplayShotSource extends BaseShotSource {
 
   constructor(log: ShotLog, sessionId: string) {
     super();
-    this.shots = log.getSession(sessionId).map((entry) => entry.raw);
+    this.shots = log
+      .getSession(sessionId)
+      .filter((entry) => !entry.isPutt)
+      .map((entry) => entry.raw!);
     this.label = `Replay: ${sessionId}`;
   }
 

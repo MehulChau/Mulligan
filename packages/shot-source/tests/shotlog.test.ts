@@ -5,7 +5,15 @@ import type { RawShotEvent } from "../src/types";
 
 function entry(sessionId: string, timestamp: number): ShotLogEntry {
   const raw: RawShotEvent = { ballSpeedMph: 106, launchDeg: 18.5, timestamp };
-  return { sessionId, timestamp, raw, shot: enrichShot(raw, "7i") };
+  return {
+    sessionId,
+    timestamp,
+    strokeNumber: 1,
+    isPutt: false,
+    penalty: null,
+    raw,
+    shot: enrichShot(raw, "7i"),
+  };
 }
 
 describe("createMemoryStore", () => {
@@ -55,5 +63,30 @@ describe("ShotLog", () => {
     const [saved] = log.getSession("s1");
     expect(saved?.rest).toEqual({ x: 3, y: 150 });
     expect(saved?.restSurface).toBe("fairway");
+  });
+
+  it("records a putt stroke without ball-flight fields", () => {
+    const log = new ShotLog(createMemoryStore());
+    log.append({
+      sessionId: "s1",
+      timestamp: 1,
+      strokeNumber: 4,
+      isPutt: true,
+      penalty: null,
+      puttDistanceBeforeYds: 6,
+      puttDistanceAfterYds: 0,
+      holed: true,
+    });
+    const [saved] = log.getSession("s1");
+    expect(saved?.isPutt).toBe(true);
+    expect(saved?.holed).toBe(true);
+    expect(saved?.raw).toBeUndefined();
+  });
+
+  it("records a penalty on a stroke", () => {
+    const log = new ShotLog(createMemoryStore());
+    log.append({ ...entry("s1", 1), strokeNumber: 2, penalty: "water" });
+    const [saved] = log.getSession("s1");
+    expect(saved?.penalty).toBe("water");
   });
 });

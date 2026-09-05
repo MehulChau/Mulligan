@@ -123,7 +123,7 @@ describe("ReplayShotSource", () => {
     const club = findClub("7i");
     for (let i = 0; i < 3; i++) {
       const raw: RawShotEvent = { ballSpeedMph: club.ballSpeedMph, launchDeg: club.launchDeg, timestamp: i };
-      log.append({ sessionId, timestamp: i, raw, shot: enrichShot(raw, "7i") });
+      log.append({ sessionId, timestamp: i, strokeNumber: i + 1, isPutt: false, penalty: null, raw, shot: enrichShot(raw, "7i") });
     }
     return log;
   }
@@ -158,6 +158,9 @@ describe("ReplayShotSource", () => {
     log.append({
       sessionId: "s2",
       timestamp: 99,
+      strokeNumber: 1,
+      isPutt: false,
+      penalty: null,
       raw: { ballSpeedMph: 1, launchDeg: 1, timestamp: 99 },
       shot: enrichShot({ ballSpeedMph: 1, launchDeg: 1, timestamp: 99 }, "7i"),
     });

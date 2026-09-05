@@ -1,4 +1,4 @@
-import type { SurfaceType } from "@mulligan/game";
+import type { PenaltyKind, SurfaceType } from "@mulligan/game";
 import type { ClubProfile, Provenance, ShotField } from "@mulligan/shot-source";
 
 const SURFACE_LABEL: Record<SurfaceType, string> = {
@@ -11,6 +11,11 @@ const SURFACE_LABEL: Record<SurfaceType, string> = {
   out: "Out of bounds",
 };
 
+const PENALTY_MESSAGE: Record<PenaltyKind, string> = {
+  water: "In the water — +1, dropping nearby",
+  out: "Out of bounds — +1 and replay from your last spot",
+};
+
 export interface LastShotSummary {
   carryYds: number;
   totalYds: number;
@@ -20,11 +25,12 @@ export interface LastShotSummary {
 export interface HudProps {
   distanceToPinYds: number;
   surface: SurfaceType;
-  shotNumber: number;
+  strokeCount: number;
+  par: number;
   selectedClub: ClubProfile;
   expectedCarryYds: number;
   lastShot: LastShotSummary | null;
-  onGreenInShots: number | null;
+  lastPenalty: PenaltyKind | null;
 }
 
 const FIELD_LABEL: Record<ShotField, string> = {
@@ -35,15 +41,7 @@ const FIELD_LABEL: Record<ShotField, string> = {
   startLine: "Start line",
 };
 
-export function Hud({ distanceToPinYds, surface, shotNumber, selectedClub, expectedCarryYds, lastShot, onGreenInShots }: HudProps) {
-  if (onGreenInShots !== null) {
-    return (
-      <div className="hud">
-        <div className="hud-headline">On the green in {onGreenInShots}</div>
-      </div>
-    );
-  }
-
+export function Hud({ distanceToPinYds, surface, strokeCount, par, selectedClub, expectedCarryYds, lastShot, lastPenalty }: HudProps) {
   return (
     <div className="hud">
       <div className="hud-row hud-primary">
@@ -56,7 +54,10 @@ export function Hud({ distanceToPinYds, surface, shotNumber, selectedClub, expec
           <span>lie</span>
         </div>
         <div className="hud-stat">
-          <b>#{shotNumber}</b>
+          <b>
+            {strokeCount + 1}
+            <span className="hud-par"> / par {par}</span>
+          </b>
           <span>shot</span>
         </div>
         <div className="hud-stat">
@@ -64,6 +65,8 @@ export function Hud({ distanceToPinYds, surface, shotNumber, selectedClub, expec
           <span>~{Math.round(expectedCarryYds)} yds</span>
         </div>
       </div>
+
+      {lastPenalty && <div className="penalty-callout">{PENALTY_MESSAGE[lastPenalty]}</div>}
 
       {lastShot && (
         <div className="hud-row hud-lastshot">

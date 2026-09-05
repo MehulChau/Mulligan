@@ -1,20 +1,35 @@
 import type { RawShotEvent, ShotEvent } from "../types";
 
 /**
- * Every emitted RawShotEvent, its enriched ShotEvent, and (opaque to this
- * package) wherever the ball ended up. `rest`/`landingSurface`/
- * `restSurface` are plain, duck-typed fields so this package doesn't need
- * to depend on @mulligan/game's hole-space types to log a hole-space
- * position — the shape is owned by whoever calls append().
+ * Every stroke of a session, in order — ball-flight shots AND putts, since
+ * this is what will eventually let a real range session be replayed
+ * stroke-by-stroke, not just its ball-flight portion. `raw`/`shot` (the
+ * physics-side fields) are present for a ball-flight stroke and absent for
+ * a putt; `puttDistanceBeforeYds`/`puttDistanceAfterYds`/`holed` are the
+ * reverse. `rest`/`landingSurface`/`restSurface` are plain, duck-typed
+ * fields so this package doesn't need to depend on @mulligan/game's
+ * hole-space types to log a hole-space position — the shape is owned by
+ * whoever calls append().
  */
 export interface ShotLogEntry {
   sessionId: string;
   timestamp: number;
-  raw: RawShotEvent;
-  shot: ShotEvent;
+  /** 1-indexed stroke count for the hole, tee shot is 1. */
+  strokeNumber: number;
+  isPutt: boolean;
+  penalty: "water" | "out" | null;
+
+  // Ball-flight stroke fields — present when !isPutt.
+  raw?: RawShotEvent;
+  shot?: ShotEvent;
   rest?: { x: number; y: number };
   landingSurface?: string;
   restSurface?: string;
+
+  // Putt fields — present when isPutt.
+  puttDistanceBeforeYds?: number;
+  puttDistanceAfterYds?: number;
+  holed?: boolean;
 }
 
 /** Minimal storage seam — same shape as window.localStorage, swappable for tests/SSR. */
