@@ -22,16 +22,17 @@ import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } fr
 import { expectedCarryYds } from "./game/expectedCarry";
 import { DEFAULT_DEVICE_ADDRESS, createInitialState, gameReducer, type ShotHistoryEntry } from "./game/gameState";
 import { HoleCanvas } from "./game/HoleCanvas";
+import { usePrefersReducedMotion } from "./motion";
 import { AimSlider } from "./ui/AimSlider";
-import { AimZeroPanel } from "./ui/AimZeroPanel";
 import { ClubPicker } from "./ui/ClubPicker";
-import { DeviceSourcePanel } from "./ui/DeviceSourcePanel";
-import { HoleCompleteSummary } from "./ui/HoleCompleteSummary";
-import { Hud } from "./ui/Hud";
+import { DistanceHero } from "./ui/DistanceHero";
 import { ManualEntryPanel } from "./ui/ManualEntryPanel";
 import { PuttingPanel } from "./ui/PuttingPanel";
-import { SourceModeToggle } from "./ui/SourceModeToggle";
+import { ScorecardSummary } from "./ui/ScorecardSummary";
+import { SettingsSheet } from "./ui/SettingsSheet";
+import { ShotReadout, type ShotReadoutData } from "./ui/ShotReadout";
 import { SwingFractionSlider } from "./ui/SwingFractionSlider";
+import { TopBar } from "./ui/TopBar";
 import "./App.css";
 
 const HOLE = HOLE_1;
@@ -44,6 +45,36 @@ function readStoredDeviceAddress(): string {
   } catch {
     return DEFAULT_DEVICE_ADDRESS;
   }
+}
+
+/** One line, always -- the small status text under the Swing button. */
+function sourceStatusText(
+  sourceMode: "simulated" | "manual" | "device",
+  device: ReturnType<typeof createInitialState>["device"],
+): string {
+  if (sourceMode === "simulated") return "Simulated shots";
+  if (sourceMode === "manual") return "Manual entry";
+  switch (device.connectionState) {
+    case "connected":
+      return device.deviceInfo ? `Connected · ${device.deviceInfo.deviceId}` : "Connected";
+    case "connecting":
+      return "Connecting to device…";
+    case "error":
+      return "Device connection error — open Settings";
+    default:
+      return "No device connected — open Settings";
+  }
+}
+
+function connectionDotClass(
+  sourceMode: "simulated" | "manual" | "device",
+  device: ReturnType<typeof createInitialState>["device"],
+): string {
+  if (sourceMode !== "device") return "conn-dot-neutral";
+  if (device.connectionState === "connected") return "conn-dot-on";
+  if (device.connectionState === "connecting") return "conn-dot-pending";
+  if (device.connectionState === "error") return "conn-dot-error";
+  return "conn-dot-off";
 }
 
 export default function App() {
@@ -76,6 +107,8 @@ export default function App() {
   const [sourcesReady, setSourcesReady] = useState(false);
   const [swingError, setSwingError] = useState<string | null>(null);
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
     const simulated = new SimulatedShotSource();
@@ -131,6 +164,19 @@ export default function App() {
   const previousRestSpots = useMemo(() => state.shotHistory.map((entry) => entry.result.rest), [state.shotHistory]);
 
   const lastEntry: ShotHistoryEntry | undefined = state.shotHistory[state.shotHistory.length - 1];
+  const readoutData: ShotReadoutData | null =
+    state.phase === "shot" && lastEntry
+      ? {
+          key: String(lastEntry.raw.timestamp),
+          club: findClub(lastEntry.clubId),
+          carryYds: lastEntry.result.carryYds,
+          totalYds: lastEntry.result.totalYds,
+          ballSpeedMph: lastEntry.shot.ballSpeedMph,
+          launchDeg: lastEntry.shot.launchDeg,
+          spinRpm: lastEntry.shot.spinRpm,
+          provenance: lastEntry.shot.provenance,
+        }
+      : null;
 
   // Shared tail for every shot regardless of where the RawShotEvent came
   // from (manual sliders, the simulator, or a real device push) -- reads
@@ -281,6 +327,10 @@ export default function App() {
       sessionZeroDeg: state.device.sessionZeroDeg,
       simulatedSeed: simulatedRef.current?.seed,
     });
+    if (exported.entries.length === 0) {
+      setSessionMessage("Nothing to export yet — play a shot first.");
+      return;
+    }
     const blob = new Blob([sessionExportToJSON(exported)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -313,7 +363,7 @@ export default function App() {
         );
       })
       .catch((err) => {
-        setSessionMessage(err instanceof Error ? `Import failed: ${err.message}` : "Import failed.");
+        setSessionMessage(err instanceof Error ? `Import failed: ${err.message}` : "Import failed. Check the file and try again.");
       });
   }
 
@@ -323,20 +373,13 @@ export default function App() {
 
   return (
     <div className="app">
-      <header className="app-header">
-        <h1>
-          Mulligan<span className="hole-name"> · {state.hole.name}</span>
-        </h1>
-        <div className="session-tools">
-          <button type="button" className="session-tool-btn" onClick={handleExportSession}>
-            Export
-          </button>
-          <label className="session-tool-btn">
-            Import
-            <input type="file" accept="application/json" className="session-file-input" onChange={handleImportSessionFile} />
-          </label>
-        </div>
-      </header>
+      <TopBar
+        holeName={state.hole.name}
+        par={state.hole.par}
+        strokeNumber={state.strokeCount + 1}
+        onOpenSettings={() => setSettingsOpen(true)}
+        connectionDotClassName={connectionDotClass(state.sourceMode, state.device)}
+      />
 
       {sessionMessage && (
         <div className="session-message">
@@ -348,27 +391,7 @@ export default function App() {
       )}
 
       {state.phase !== "holed" && (
-        <Hud
-          distanceToPinYds={distanceToPinYds}
-          surface={currentSurface}
-          strokeCount={state.strokeCount}
-          par={state.hole.par}
-          selectedClub={selectedClub}
-          expectedCarryYds={clubExpectedCarry}
-          lastShot={
-            state.phase === "shot" && lastEntry
-              ? { carryYds: lastEntry.result.carryYds, totalYds: lastEntry.result.totalYds, provenance: lastEntry.shot.provenance }
-              : null
-          }
-          lastPenalty={state.lastPenalty}
-        />
-      )}
-
-      {state.phase === "holed" && (
-        <HoleCompleteSummary
-          breakdown={summarizeScore(state.strokesToGreen ?? state.strokeCount, state.strokeCount - (state.strokesToGreen ?? state.strokeCount), state.hole.par)}
-          onPlayAgain={handlePlayAgain}
-        />
+        <DistanceHero distanceToPinYds={distanceToPinYds} surface={currentSurface} lastPenalty={state.lastPenalty} />
       )}
 
       <div className="canvas-wrap">
@@ -380,109 +403,123 @@ export default function App() {
           previousRestSpots={previousRestSpots}
           pendingShot={state.pendingShot?.result ?? null}
           skipAnimation={state.skipAnimation}
+          reducedMotion={reducedMotion}
           onShotSettled={() => dispatch({ type: "SHOT_SETTLED" })}
         />
       </div>
 
-      {state.phase === "shot" && (
-        <div className="controls">
-          <SourceModeToggle
-            mode={state.sourceMode}
-            disabled={controlsDisabled}
-            onChange={(mode) => dispatch({ type: "SET_SOURCE_MODE", mode })}
-          />
-
-          {state.sourceMode === "device" && (
-            <DeviceSourcePanel
-              device={state.device}
-              disabled={controlsDisabled}
-              onAddressChange={(address) => dispatch({ type: "SET_DEVICE_ADDRESS", address })}
-              onConnect={handleConnectDevice}
-              onDisconnect={handleDisconnectDevice}
-            />
+      {state.phase === "holed" ? (
+        <ScorecardSummary
+          hole={state.hole}
+          breakdown={summarizeScore(
+            state.strokesToGreen ?? state.strokeCount,
+            state.strokeCount - (state.strokesToGreen ?? state.strokeCount),
+            state.hole.par,
           )}
-
-          {state.sourceMode === "device" && state.device.connectionState === "connected" && (
-            <AimZeroPanel
-              sessionZeroDeg={state.device.sessionZeroDeg}
-              zeroConfirmed={state.device.zeroConfirmed}
-              calibratingZero={state.device.calibratingZero}
-              pendingZeroSample={state.device.pendingZeroSample}
-              disabled={controlsDisabled}
-              onStart={() => dispatch({ type: "START_AIM_ZERO_CALIBRATION" })}
-              onConfirm={() => dispatch({ type: "CONFIRM_AIM_ZERO" })}
-              onCancel={() => dispatch({ type: "CANCEL_AIM_ZERO_CALIBRATION" })}
-            />
-          )}
-
-          <AimSlider
-            aimOffsetDeg={state.aimOffsetDeg}
-            disabled={controlsDisabled}
-            onChange={(deg) => dispatch({ type: "SET_AIM_OFFSET_DEG", deg })}
-          />
-
-          <ClubPicker
-            clubs={CLUBS}
-            selectedClubId={state.selectedClubId}
-            surface={currentSurface}
-            disabled={controlsDisabled}
-            onSelect={(clubId) => dispatch({ type: "SELECT_CLUB", clubId })}
-          />
-
-          {state.sourceMode === "simulated" && wedgeSelected && (
-            <SwingFractionSlider
-              fraction={state.swingFraction}
-              expectedCarryYds={clubExpectedCarry}
-              disabled={controlsDisabled}
-              onChange={(fraction) => dispatch({ type: "SET_SWING_FRACTION", fraction })}
-            />
-          )}
-
-          {state.sourceMode === "manual" && (
-            <ManualEntryPanel
-              values={state.manualValues}
-              disabled={controlsDisabled}
-              onChange={(field, value) => dispatch({ type: "SET_MANUAL_VALUE", field, value })}
-            />
-          )}
-
-          {swingError && <div className="swing-error">{swingError}</div>}
-
-          <div className="hitrow">
-            {state.sourceMode === "device" ? (
-              <div className="device-waiting">
-                {state.device.connectionState !== "connected"
-                  ? "Connect a device above to play"
-                  : state.device.calibratingZero
-                    ? "Zeroing — hit a shot toward your target"
-                    : "Waiting for a shot from the device…"}
-              </div>
-            ) : (
-              <button type="button" className="hit" disabled={!canSwing} onClick={handleSwing}>
-                {sourcesReady ? "Swing" : "Loading…"}
-              </button>
-            )}
-            <label className="skip-toggle">
-              <input
-                type="checkbox"
-                checked={state.skipAnimation}
-                onChange={() => dispatch({ type: "TOGGLE_SKIP_ANIMATION" })}
-              />
-              Skip animation
-            </label>
-          </div>
-        </div>
-      )}
-
-      {state.phase === "putting" && (
-        <PuttingPanel
-          puttDistanceYds={state.puttDistanceYds}
-          puttAttempts={state.puttAttempts}
-          lastPuttResult={state.lastPuttResult}
-          disabled={!sourcesReady}
-          onPutt={handlePutt}
+          paths={previousPaths}
+          restSpots={previousRestSpots}
+          onPlayAgain={handlePlayAgain}
         />
+      ) : (
+        <>
+          {state.phase === "shot" && <ShotReadout data={readoutData} skipAnimation={state.skipAnimation || reducedMotion} />}
+
+          {state.phase === "shot" && (
+            <div className="controls">
+              <AimSlider
+                aimOffsetDeg={state.aimOffsetDeg}
+                disabled={controlsDisabled}
+                onChange={(deg) => dispatch({ type: "SET_AIM_OFFSET_DEG", deg })}
+              />
+
+              {state.sourceMode === "simulated" && wedgeSelected && (
+                <SwingFractionSlider
+                  fraction={state.swingFraction}
+                  expectedCarryYds={clubExpectedCarry}
+                  disabled={controlsDisabled}
+                  onChange={(fraction) => dispatch({ type: "SET_SWING_FRACTION", fraction })}
+                />
+              )}
+
+              {state.sourceMode === "manual" && (
+                <ManualEntryPanel
+                  values={state.manualValues}
+                  disabled={controlsDisabled}
+                  onChange={(field, value) => dispatch({ type: "SET_MANUAL_VALUE", field, value })}
+                />
+              )}
+
+              {swingError && <div className="swing-error">{swingError}</div>}
+
+              <div className="bottom-third">
+                <ClubPicker
+                  clubs={CLUBS}
+                  selectedClubId={state.selectedClubId}
+                  surface={currentSurface}
+                  disabled={controlsDisabled}
+                  onSelect={(clubId) => dispatch({ type: "SELECT_CLUB", clubId })}
+                />
+
+                <div className="hitrow">
+                  {state.sourceMode === "device" ? (
+                    <div className="device-waiting">
+                      {state.device.connectionState !== "connected"
+                        ? "Connect a device in Settings to play"
+                        : state.device.calibratingZero
+                          ? "Zeroing — hit a shot toward your target"
+                          : "Waiting for a shot from the device…"}
+                    </div>
+                  ) : (
+                    <button type="button" className="hit" disabled={!canSwing} onClick={handleSwing}>
+                      {sourcesReady ? "Swing" : "Loading…"}
+                    </button>
+                  )}
+                </div>
+                <div className="swing-meta">
+                  <span>
+                    {selectedClub.name} · ~{Math.round(clubExpectedCarry)} yds
+                  </span>
+                  <span className="swing-meta-status">{sourceStatusText(state.sourceMode, state.device)}</span>
+                  <label className="skip-toggle">
+                    <input
+                      type="checkbox"
+                      checked={state.skipAnimation}
+                      onChange={() => dispatch({ type: "TOGGLE_SKIP_ANIMATION" })}
+                    />
+                    Skip animation
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {state.phase === "putting" && (
+            <PuttingPanel
+              puttDistanceYds={state.puttDistanceYds}
+              puttAttempts={state.puttAttempts}
+              lastPuttResult={state.lastPuttResult}
+              disabled={!sourcesReady}
+              onPutt={handlePutt}
+            />
+          )}
+        </>
       )}
+
+      <SettingsSheet
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        sourceMode={state.sourceMode}
+        onSourceModeChange={(mode) => dispatch({ type: "SET_SOURCE_MODE", mode })}
+        device={state.device}
+        onDeviceAddressChange={(address) => dispatch({ type: "SET_DEVICE_ADDRESS", address })}
+        onConnectDevice={handleConnectDevice}
+        onDisconnectDevice={handleDisconnectDevice}
+        onAimZeroStart={() => dispatch({ type: "START_AIM_ZERO_CALIBRATION" })}
+        onAimZeroConfirm={() => dispatch({ type: "CONFIRM_AIM_ZERO" })}
+        onAimZeroCancel={() => dispatch({ type: "CANCEL_AIM_ZERO_CALIBRATION" })}
+        onExportSession={handleExportSession}
+        onImportSessionFile={handleImportSessionFile}
+      />
     </div>
   );
 }

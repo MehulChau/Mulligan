@@ -2,42 +2,64 @@
   --bg: #f3f6f0;
   --panel: #fbfcf9;
   --ink: #1c2721;
-  --sub: #5c6b61;
+  --sub: #55645a; /* darkened from #5c6b61 for AA contrast at 13px on --bg/--panel */
   --green: #1e6b44;
   --deep: #0d3b25;
-  --amber: #c9862b;
+  --amber: #8f5818; /* darkened from #c9862b (via #a8681c, still 4.13:1) for AA contrast on light backgrounds -- 5.38:1 */
   --line: #d8dfd3;
   --chipbg: #e9efe6;
   --track: #cbd5c6;
-  --danger: #b3432b;
+  --danger: #9c3a24; /* darkened from #b3432b for AA contrast on light backgrounds */
+  --cardstock: #f2ead4;
+  --cardstock-ink: #4a4130;
+  --measured-tint: color-mix(in srgb, var(--green) 16%, var(--panel));
+  --estimated-ink: var(--sub);
+
+  /* Motion discipline (Part 5): one easing curve, two durations, everywhere. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dur-fast: 180ms;
+  --dur-slow: 900ms;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0f1512;
     --panel: #161e19;
     --ink: #e6ebe4;
-    --sub: #93a398;
+    --sub: #a3b3a8; /* lightened from #93a398 for AA contrast on dark surfaces */
     --green: #3fa871;
     --deep: #7ed0a5;
     --amber: #e0a44e;
-    --line: #273129;
+    --line: #2c382f;
     --chipbg: #1e2822;
     --track: #2c382f;
     --danger: #e08066;
+    --cardstock: #241f16;
+    --cardstock-ink: #d9cca0;
+    --measured-tint: color-mix(in srgb, var(--green) 22%, var(--panel));
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f1512;
   --panel: #161e19;
   --ink: #e6ebe4;
-  --sub: #93a398;
+  --sub: #a3b3a8;
   --green: #3fa871;
   --deep: #7ed0a5;
   --amber: #e0a44e;
-  --line: #273129;
+  --line: #2c382f;
   --chipbg: #1e2822;
   --track: #2c382f;
   --danger: #e08066;
+  --cardstock: #241f16;
+  --cardstock-ink: #d9cca0;
+  --measured-tint: color-mix(in srgb, var(--green) 22%, var(--panel));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --dur-fast: 0ms;
+    --dur-slow: 0ms;
+  }
 }
 
 * {
@@ -78,55 +100,76 @@ body {
   height: 100%;
   max-width: 480px;
   margin: 0 auto;
-  padding: max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
+  padding: max(10px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right))
     max(10px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
   overflow: hidden;
-}
-
-.app-header {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  margin-bottom: 6px;
-  flex-shrink: 0;
-}
-.app-header h1 {
-  font-size: 19px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  margin: 0;
-}
-.hole-name {
-  color: var(--sub);
-  font-weight: 600;
-}
-
-/* Session export/import -- touched rarely (end of a range session, or
-   moving data to another phone), so kept as small text links, not buttons
-   competing with the actual game controls. */
-.session-tools {
-  display: flex;
-  gap: 10px;
-  flex-shrink: 0;
-}
-.session-tool-btn {
   position: relative;
-  font-family: inherit;
-  font-size: 11px;
+}
+
+/* ---------- Top bar (Part 3): quiet, hairline border, context only ---------- */
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 44px;
+  padding-bottom: 7px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink);
+  flex-shrink: 0;
+}
+.topbar-left {
   font-weight: 700;
+}
+.topbar-dim {
   color: var(--sub);
-  background: none;
-  border: none;
-  padding: 4px 2px;
+  font-weight: 500;
+}
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.topbar-settings {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--sub);
   cursor: pointer;
   touch-action: manipulation;
+  flex-shrink: 0;
 }
-.session-file-input {
+.conn-dot {
   position: absolute;
-  inset: 0;
-  opacity: 0;
-  cursor: pointer;
+  top: -2px;
+  right: -2px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--bg);
+  background: var(--track);
 }
+.conn-dot-on {
+  background: var(--green);
+}
+.conn-dot-pending {
+  background: var(--amber);
+}
+.conn-dot-error {
+  background: var(--danger);
+}
+.conn-dot-off,
+.conn-dot-neutral {
+  background: var(--track);
+}
+
 .session-message {
   display: flex;
   align-items: center;
@@ -136,12 +179,18 @@ body {
   border: 1px solid var(--line);
   border-radius: 8px;
   padding: 6px 10px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   font-size: 11.5px;
   color: var(--sub);
   flex-shrink: 0;
 }
 .session-message-dismiss {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  margin: -8px -6px -8px 0;
   font-family: inherit;
   font-size: 14px;
   line-height: 1;
@@ -149,141 +198,186 @@ body {
   border: none;
   color: var(--sub);
   cursor: pointer;
-  padding: 0 2px;
-}
-
-.hud {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 8px 10px;
-  margin-bottom: 8px;
+  padding: 0;
   flex-shrink: 0;
 }
-.hud-headline {
-  font-size: 18px;
-  font-weight: 800;
-  color: var(--green);
+
+/* ---------- Distance hero (Part 3): the number the player actually looks at ---------- */
+.distance-hero {
   text-align: center;
-  padding: 8px 0;
+  flex-shrink: 0;
+  padding: 4px 0 6px;
 }
-.hud-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.hud-primary {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 4px;
-}
-.hud-stat {
-  text-align: center;
-}
-.hud-stat b {
-  display: block;
-  font-size: 15px;
-  font-weight: 800;
+.distance-value {
+  font-size: 44px;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
+  color: var(--ink);
 }
-.hud-stat span {
-  font-size: 10.5px;
+.distance-sub {
+  font-size: 12.5px;
   color: var(--sub);
+  margin-top: 2px;
 }
-.hud-par {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--sub);
+.distance-lie {
+  color: var(--ink);
+  font-weight: 700;
 }
 .penalty-callout {
   margin-top: 6px;
   padding: 6px 8px;
   border-radius: 8px;
-  background: color-mix(in srgb, var(--danger) 12%, var(--panel));
+  background: color-mix(in srgb, var(--danger) 14%, var(--panel));
   border: 1px solid var(--danger);
   color: var(--danger);
   font-size: 12px;
   font-weight: 700;
   text-align: center;
 }
-.hud-lastshot {
-  margin-top: 6px;
-  padding-top: 6px;
-  border-top: 1px solid var(--line);
-  font-size: 12px;
-  flex-wrap: wrap;
-}
-.provenance {
-  display: flex;
-  gap: 3px;
-  flex-wrap: wrap;
-}
-.prov {
-  font-size: 9.5px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  border: 1px solid var(--line);
-}
-.prov.measured {
-  color: var(--green);
-  border-color: var(--green);
-}
-.prov.estimated {
-  color: var(--sub);
-}
 
+/* ---------- The hole: the largest block of vertical space, always ---------- */
 .canvas-wrap {
   flex: 1 1 auto;
   /* The game view is the whole point of the screen -- it must never get
      crushed by a tall control panel (e.g. the five manual-entry sliders).
      Controls scroll internally instead; the canvas keeps this floor. */
-  min-height: 200px;
+  min-height: 180px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
+}
+
+/* ---------- Shot readout (Part 4): the signature moment ---------- */
+.readout {
+  flex-shrink: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+}
+.readout-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  font-size: 12px;
+  color: var(--sub);
+  text-align: center;
+}
+.readout-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.readout-club {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--sub);
+}
+.readout-carry {
+  font-size: 21px;
+  font-weight: 800;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.readout-carry-unit {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sub);
+  margin-left: 3px;
+}
+.readout-total {
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--sub);
+  font-variant-numeric: tabular-nums;
+}
+.readout-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+.readout-tile {
+  border-radius: 8px;
+  padding: 5px 6px;
+  text-align: center;
+  border: 1px solid var(--line);
+  background: var(--chipbg);
+}
+/* Measured: a value the device actually produced -- solid, tinted, confident. */
+.readout-tile.measured {
+  background: var(--measured-tint);
+  border-color: var(--green);
+}
+.readout-tile.measured .readout-tile-value {
+  color: var(--green);
+}
+/* Estimated: filled in by a model, not the device -- dashed, muted, honest about it. */
+.readout-tile.estimated {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--track);
+}
+.readout-tile.estimated .readout-tile-value {
+  color: var(--sub);
+}
+.readout-tile-value {
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.readout-tile-unit {
+  font-size: 9.5px;
+  font-weight: 600;
+  margin-left: 2px;
+  opacity: 0.85;
+}
+.readout-tile-label {
+  font-size: 9.5px;
+  color: var(--sub);
+  margin-top: 1px;
+}
+.readout-legend {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 6px;
+  font-size: 9.5px;
+  color: var(--sub);
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.legend-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.legend-swatch.measured {
+  background: var(--green);
+}
+.legend-swatch.estimated {
+  border: 1.3px dashed var(--track);
 }
 
 .controls {
   flex-shrink: 0;
-  max-height: 48vh;
+  max-height: 44vh;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: 4px;
-}
-
-.mode-toggle {
-  display: flex;
-  background: var(--chipbg);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 3px;
-  margin-bottom: 10px;
-}
-.mode-tab {
-  flex: 1;
-  font-family: inherit;
-  font-size: 12.5px;
-  font-weight: 700;
-  padding: 8px 0;
-  border: none;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--sub);
-  cursor: pointer;
-  touch-action: manipulation;
-}
-.mode-tab.on {
-  background: var(--panel);
-  color: var(--ink);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-}
-.mode-tab:disabled {
-  opacity: 0.6;
-  cursor: default;
+  padding-bottom: 2px;
 }
 
 .aim-ctl {
@@ -331,10 +425,141 @@ input[type="range"]:disabled {
   margin-bottom: 10px;
 }
 
-/* Device source + aim zeroing -- touched once at the start of a session,
-   so both stay compact rather than competing with the club chips. */
-.device-panel {
+/* ---------- Settings sheet (Part 5): source selection lives here now, touched once a session ---------- */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(10, 16, 12, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 40;
+  animation: sheet-backdrop-in var(--dur-fast) var(--ease);
+}
+.sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 82vh;
+  overflow-y: auto;
   background: var(--panel);
+  border-radius: 18px 18px 0 0;
+  border: 1px solid var(--line);
+  border-bottom: none;
+  padding: 10px 16px max(16px, env(safe-area-inset-bottom));
+  animation: sheet-slide-up var(--dur-fast) var(--ease);
+}
+@keyframes sheet-backdrop-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes sheet-slide-up {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}
+.sheet-handle {
+  width: 36px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--track);
+  margin: 4px auto 10px;
+}
+.sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 16px;
+  font-weight: 800;
+  margin-bottom: 12px;
+}
+.sheet-close {
+  font-family: inherit;
+  font-size: 20px;
+  line-height: 1;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--chipbg);
+  color: var(--sub);
+  cursor: pointer;
+  touch-action: manipulation;
+  flex-shrink: 0;
+}
+.sheet-section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--sub);
+  margin: 14px 0 6px;
+}
+.sheet-section-label:first-of-type {
+  margin-top: 0;
+}
+.sheet-session-row {
+  display: flex;
+  gap: 16px;
+}
+.session-tool-btn {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--green);
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.session-file-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.mode-toggle {
+  display: flex;
+  background: var(--chipbg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 3px;
+  margin-bottom: 10px;
+}
+.mode-tab {
+  flex: 1;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  padding: 10px 0;
+  min-height: 44px;
+  border: none;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--sub);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.mode-tab.on {
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+}
+.mode-tab:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+/* Device source + aim zeroing -- settings-sheet only now, touched once at the start of a session. */
+.device-panel {
+  background: var(--chipbg);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 10px 12px;
@@ -344,10 +569,11 @@ input[type="range"]:disabled {
   width: 100%;
   font-family: inherit;
   font-size: 13px;
-  padding: 9px 10px;
+  padding: 11px 10px;
+  min-height: 44px;
   border-radius: 8px;
   border: 1px solid var(--line);
-  background: var(--chipbg);
+  background: var(--panel);
   color: var(--ink);
 }
 .device-address-input:disabled {
@@ -383,7 +609,8 @@ input[type="range"]:disabled {
   font-family: inherit;
   font-size: 12px;
   font-weight: 700;
-  padding: 7px 12px;
+  padding: 10px 14px;
+  min-height: 44px;
   border-radius: 8px;
   border: 1px solid var(--green);
   background: var(--green);
@@ -407,6 +634,9 @@ input[type="range"]:disabled {
 }
 .device-capabilities {
   margin-top: 8px;
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
 }
 .device-status-warning {
   margin-top: 8px;
@@ -414,13 +644,26 @@ input[type="range"]:disabled {
   font-weight: 700;
   color: var(--amber);
 }
+.prov {
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.prov.measured {
+  color: var(--green);
+  border-color: var(--green);
+}
+.prov.estimated {
+  color: var(--sub);
+}
 
 .aimzero-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  background: var(--panel);
+  background: var(--chipbg);
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 8px 12px;
@@ -439,6 +682,14 @@ input[type="range"]:disabled {
   border-color: var(--amber);
 }
 
+/* ---------- Bottom third (Part 3): club chips + swing button, thumb-reachable ---------- */
+.bottom-third {
+  position: sticky;
+  bottom: 0;
+  background: var(--bg);
+  padding-top: 2px;
+}
+
 .lie-caption {
   font-size: 11.5px;
   font-weight: 700;
@@ -447,25 +698,24 @@ input[type="range"]:disabled {
 }
 
 .clubs {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
   gap: 6px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .club {
   font-family: inherit;
   font-size: 12.5px;
   font-weight: 600;
-  padding: 10px 11px;
-  min-height: 40px;
+  padding: 10px 6px;
+  min-height: 44px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--chipbg);
   color: var(--ink);
   cursor: pointer;
-  flex: 1 1 auto;
-  min-width: 64px;
   touch-action: manipulation;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .club.on {
   background: var(--green);
@@ -493,16 +743,7 @@ input[type="range"]:disabled {
 
 .hitrow {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  /* Stays reachable with one tap even when Manual mode's sliders make the
-     controls area tall enough to scroll -- swing should never require a
-     scroll-then-tap. */
-  position: sticky;
-  bottom: 0;
-  background: var(--bg);
-  padding-top: 8px;
-  margin-top: -2px;
+  align-items: stretch;
 }
 .hit {
   font-family: inherit;
@@ -518,6 +759,7 @@ input[type="range"]:disabled {
   flex: 1;
   cursor: pointer;
   touch-action: manipulation;
+  transition: transform var(--dur-fast) var(--ease);
 }
 .hit:disabled {
   opacity: 0.5;
@@ -534,14 +776,29 @@ input[type="range"]:disabled {
   text-align: center;
   padding: 15px 0;
 }
+.swing-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px 10px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--sub);
+  padding: 6px 2px 2px;
+}
+.swing-meta-status {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .skip-toggle {
-  font-size: 11.5px;
+  font-size: 11px;
   color: var(--sub);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
+  min-height: 44px;
   white-space: nowrap;
-  padding: 8px 2px;
+  margin-left: auto;
   touch-action: manipulation;
 }
 .skip-toggle input {
@@ -576,36 +833,99 @@ input[type="range"]:disabled {
   margin-bottom: 10px;
 }
 
-.score-breakdown {
-  text-align: center;
-  font-size: 12.5px;
-  color: var(--sub);
-  padding-bottom: 10px;
+/* ---------- Scorecard (Part 5): pencil-on-cardstock, not a modal ---------- */
+.scorecard {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--cardstock);
+  color: var(--cardstock-ink);
+  border: 1px solid color-mix(in srgb, var(--cardstock-ink) 25%, transparent);
+  border-radius: 4px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.12);
 }
-.play-again-row {
+.scorecard-perforation {
+  height: 0;
+  border-top: 2px dashed color-mix(in srgb, var(--cardstock-ink) 35%, transparent);
+  margin: 10px 14px 0;
+}
+.scorecard-body {
+  padding: 14px 20px 18px;
+  text-align: center;
+}
+.scorecard-hole {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  opacity: 0.75;
+}
+.scorecard-score {
   display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+  transform: rotate(-0.6deg);
+}
+.scorecard-total {
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.scorecard-topar {
+  font-size: 18px;
+  font-weight: 700;
+  opacity: 0.8;
+}
+.scorecard-label {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green);
+  margin-top: 2px;
+  text-transform: capitalize;
+}
+.mini-hole-trace {
+  width: 100%;
+  height: 130px;
+  display: block;
+  margin: 12px 0;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--cardstock-ink) 22%, transparent);
+}
+.scorecard-breakdown {
+  font-size: 12.5px;
+  opacity: 0.85;
+  padding-bottom: 14px;
+}
+.scorecard-body .hit {
+  width: 100%;
 }
 
 /* Short phones (SE-class, or a phone with the keyboard/browser chrome
    eating vertical space): trim the least essential vertical costs first
    rather than letting the canvas get squeezed to nothing. */
-@media (max-height: 620px) {
+@media (max-height: 640px) {
   .canvas-wrap {
-    min-height: 140px;
+    min-height: 130px;
   }
   .controls {
-    max-height: 52vh;
+    max-height: 50vh;
   }
-  .app-header {
-    margin-bottom: 4px;
+  .distance-hero {
+    padding: 2px 0 4px;
   }
-  .hud {
-    padding: 6px 10px;
-    margin-bottom: 6px;
+  .distance-value {
+    font-size: 38px;
   }
-  .hud-lastshot {
-    margin-top: 4px;
-    padding-top: 4px;
+  .readout {
+    padding: 6px 8px;
+  }
+  .readout-tile {
+    padding: 4px 5px;
+  }
+  .readout-legend {
+    display: none;
   }
   .mode-toggle {
     margin-bottom: 6px;
@@ -621,5 +941,8 @@ input[type="range"]:disabled {
   }
   .manual-panel .slider-ctl {
     margin-bottom: 6px;
+  }
+  .mini-hole-trace {
+    height: 90px;
   }
 }
