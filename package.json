@@ -13,6 +13,7 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "calibrate": "npm run calibrate -w packages/shot-source",
     "rescale-clubs": "tsx tools/rescale-clubs.ts",
+    "playtest": "tsx tools/playtest.ts",
     "mock-device": "tsx tools/mock-device.ts",
     "build:tools": "npm run build -w packages/physics && npm run build -w packages/shot-source",
     "tools": "npm run build:tools && python3 -m http.server 4173"
