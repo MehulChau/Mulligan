@@ -120,7 +120,19 @@ body {
   flex-shrink: 0;
 }
 .topbar-left {
+  font-family: inherit;
+  font-size: 13px;
   font-weight: 700;
+  color: var(--ink);
+  background: none;
+  border: none;
+  padding: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  touch-action: manipulation;
+  text-align: left;
 }
 .topbar-dim {
   color: var(--sub);
@@ -900,6 +912,107 @@ input[type="range"]:disabled {
 }
 .scorecard-body .hit {
   width: 100%;
+}
+.course-scorecard-holes-btn {
+  width: 100%;
+  margin-top: 8px;
+}
+
+/* ---------- Course scorecard (Part B): every hole, par, score, total ---------- */
+.course-scorecard-rows {
+  text-align: left;
+  margin: 14px 0;
+  border-top: 1px solid color-mix(in srgb, var(--cardstock-ink) 22%, transparent);
+}
+.course-scorecard-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 2px;
+  border-bottom: 1px solid color-mix(in srgb, var(--cardstock-ink) 15%, transparent);
+  font-size: 12.5px;
+}
+.course-scorecard-num {
+  width: 16px;
+  color: color-mix(in srgb, var(--cardstock-ink) 60%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+.course-scorecard-name {
+  flex: 1;
+  font-weight: 700;
+}
+.course-scorecard-par {
+  color: color-mix(in srgb, var(--cardstock-ink) 65%, transparent);
+  font-size: 11.5px;
+}
+.course-scorecard-strokes {
+  min-width: 20px;
+  text-align: right;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.course-scorecard-topar {
+  min-width: 22px;
+  text-align: right;
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+/* ---------- Hole select (Part B): jump to any hole, in or out of order ---------- */
+.hole-select-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hole-select-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--chipbg);
+  color: var(--ink);
+  font-family: inherit;
+  cursor: pointer;
+  touch-action: manipulation;
+  text-align: left;
+}
+.hole-select-row.on {
+  border-color: var(--green);
+  background: var(--measured-tint);
+}
+.hole-select-num {
+  width: 20px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--sub);
+}
+.hole-select-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.hole-select-name {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.hole-select-par {
+  font-size: 11px;
+  color: var(--sub);
+}
+.hole-select-score {
+  font-size: 14px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--green);
+}
+.hole-select-topar {
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--sub);
 }
 
 /* Short phones (SE-class, or a phone with the keyboard/browser chrome

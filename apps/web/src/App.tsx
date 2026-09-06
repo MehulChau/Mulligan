@@ -1,5 +1,5 @@
 import { degToRad } from "@mulligan/physics";
-import { HOLE_1, headingToward, isPenaltySurface, resolvePutt, resolveShot, summarizeScore, surfaceAt } from "@mulligan/game";
+import { COURSE, headingToward, isPenaltySurface, resolvePutt, resolveShot, summarizeScore, surfaceAt } from "@mulligan/game";
 import {
   CLUBS,
   FULL_SWING_FRACTION,
@@ -25,7 +25,9 @@ import { HoleCanvas } from "./game/HoleCanvas";
 import { usePrefersReducedMotion } from "./motion";
 import { AimSlider } from "./ui/AimSlider";
 import { ClubPicker } from "./ui/ClubPicker";
+import { CourseScorecard } from "./ui/CourseScorecard";
 import { DistanceHero } from "./ui/DistanceHero";
+import { HoleSelect } from "./ui/HoleSelect";
 import { ManualEntryPanel } from "./ui/ManualEntryPanel";
 import { PuttingPanel } from "./ui/PuttingPanel";
 import { ScorecardSummary } from "./ui/ScorecardSummary";
@@ -35,7 +37,6 @@ import { SwingFractionSlider } from "./ui/SwingFractionSlider";
 import { TopBar } from "./ui/TopBar";
 import "./App.css";
 
-const HOLE = HOLE_1;
 const INITIAL_CLUB = "7i";
 const DEVICE_ADDRESS_STORAGE_KEY = "mulligan:device-address";
 
@@ -79,7 +80,7 @@ function connectionDotClass(
 
 export default function App() {
   const [state, dispatch] = useReducer(gameReducer, undefined, () =>
-    createInitialState(HOLE, INITIAL_CLUB, readStoredDeviceAddress()),
+    createInitialState(COURSE[0]!, INITIAL_CLUB, readStoredDeviceAddress()),
   );
 
   // NetworkShotSource's onShot/onConnectionStateChange/etc callbacks are
@@ -108,6 +109,7 @@ export default function App() {
   const [swingError, setSwingError] = useState<string | null>(null);
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [holeSelectOpen, setHoleSelectOpen] = useState(false);
   const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
@@ -307,8 +309,30 @@ export default function App() {
     });
   }
 
-  function handlePlayAgain() {
-    dispatch({ type: "RESET", hole: HOLE, clubId: INITIAL_CLUB });
+  // Hole transitions (next/select) all stay inside the SAME session -- a
+  // round is one range visit, and fragmenting its shot log across a new
+  // "session" per hole would only make session review/export (Part F)
+  // less coherent. Only a deliberate "New round" starts fresh. Replaying
+  // the current hole is just selecting it again from HoleSelect -- no
+  // separate action needed.
+  function handleNextHole() {
+    const nextIndex = state.courseHoleIndex + 1;
+    const nextHole = COURSE[nextIndex];
+    if (!nextHole) return; // last hole -- CourseScorecard takes over instead of this button existing
+    dispatch({ type: "GO_TO_HOLE", index: nextIndex, hole: nextHole, clubId: INITIAL_CLUB });
+    setSwingError(null);
+  }
+
+  function handleSelectHole(index: number) {
+    const hole = COURSE[index];
+    if (!hole) return;
+    dispatch({ type: "GO_TO_HOLE", index, hole, clubId: INITIAL_CLUB });
+    setSwingError(null);
+    setHoleSelectOpen(false);
+  }
+
+  function handleNewRound() {
+    dispatch({ type: "NEW_ROUND", hole: COURSE[0]!, clubId: INITIAL_CLUB });
     setSwingError(null);
     sessionIdRef.current = `session-${Date.now()}`;
   }
@@ -375,8 +399,11 @@ export default function App() {
     <div className="app">
       <TopBar
         holeName={state.hole.name}
+        holeNumber={state.courseHoleIndex + 1}
+        courseLength={COURSE.length}
         par={state.hole.par}
         strokeNumber={state.strokeCount + 1}
+        onOpenHoleSelect={() => setHoleSelectOpen(true)}
         onOpenSettings={() => setSettingsOpen(true)}
         connectionDotClassName={connectionDotClass(state.sourceMode, state.device)}
       />
@@ -409,17 +436,27 @@ export default function App() {
       </div>
 
       {state.phase === "holed" ? (
-        <ScorecardSummary
-          hole={state.hole}
-          breakdown={summarizeScore(
-            state.strokesToGreen ?? state.strokeCount,
-            state.strokeCount - (state.strokesToGreen ?? state.strokeCount),
-            state.hole.par,
-          )}
-          paths={previousPaths}
-          restSpots={previousRestSpots}
-          onPlayAgain={handlePlayAgain}
-        />
+        state.courseHoleIndex === COURSE.length - 1 ? (
+          <CourseScorecard
+            course={COURSE}
+            roundScores={state.roundScores}
+            onNewRound={handleNewRound}
+            onHoleSelect={() => setHoleSelectOpen(true)}
+          />
+        ) : (
+          <ScorecardSummary
+            hole={state.hole}
+            breakdown={summarizeScore(
+              state.strokesToGreen ?? state.strokeCount,
+              state.strokeCount - (state.strokesToGreen ?? state.strokeCount),
+              state.hole.par,
+            )}
+            paths={previousPaths}
+            restSpots={previousRestSpots}
+            continueLabel="Next hole"
+            onContinue={handleNextHole}
+          />
+        )
       ) : (
         <>
           {state.phase === "shot" && <ShotReadout data={readoutData} skipAnimation={state.skipAnimation || reducedMotion} />}
@@ -520,6 +557,16 @@ export default function App() {
         onExportSession={handleExportSession}
         onImportSessionFile={handleImportSessionFile}
       />
+
+      {holeSelectOpen && (
+        <HoleSelect
+          course={COURSE}
+          currentIndex={state.courseHoleIndex}
+          roundScores={state.roundScores}
+          onSelect={handleSelectHole}
+          onClose={() => setHoleSelectOpen(false)}
+        />
+      )}
     </div>
   );
 }

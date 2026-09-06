@@ -89,6 +89,18 @@ export interface ManualEntryValues {
 
 export interface GameState {
   hole: Hole;
+  /** Index of `hole` within COURSE -- which hole in the sequence this is, for the top bar, the "next hole" flow, and hole-select. */
+  courseHoleIndex: number;
+  /**
+   * Score recorded per hole, keyed by hole id, as each hole is holed out.
+   * Deliberately keyed by id rather than a fixed-length array indexed by
+   * course position -- replaying a hole from hole-select (practice at the
+   * range, hit the same tee shot repeatedly) overwrites that hole's entry
+   * rather than needing a "which attempt counts" rule. Survives RESET/
+   * GO_TO_HOLE (a new hole or a replay doesn't erase the round so far);
+   * only a fresh session (page load) starts it empty.
+   */
+  roundScores: Partial<Record<string, number>>;
   ballPos: Point2;
   /** Degrees, relative to "aim straight at the pin" — the slider's value. */
   aimOffsetDeg: number;
@@ -125,6 +137,8 @@ export type GameAction =
   | { type: "PUTT_RESOLVED"; result: PuttResult }
   | { type: "TOGGLE_SKIP_ANIMATION" }
   | { type: "RESET"; hole: Hole; clubId: ClubId }
+  | { type: "GO_TO_HOLE"; index: number; hole: Hole; clubId: ClubId }
+  | { type: "NEW_ROUND"; hole: Hole; clubId: ClubId }
   | { type: "SET_DEVICE_ADDRESS"; address: string }
   | { type: "DEVICE_CONNECTION_STATE"; state: ConnectionState }
   | { type: "DEVICE_INFO"; info: DeviceInfo }
@@ -259,6 +273,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         puttDistanceYds: action.result.distanceAfter,
         lastPuttResult: action.result,
         phase: finished ? "holed" : "putting",
+        roundScores: finished ? { ...state.roundScores, [state.hole.id]: strokeCount } : state.roundScores,
       };
     }
 
@@ -266,11 +281,36 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return { ...state, skipAnimation: !state.skipAnimation };
 
     case "RESET":
-      // A new hole session, not a new range session -- the device stays
-      // connected and the aim zero stays set. Re-pairing and re-zeroing on
-      // every "Play again" would be exactly the workflow friction M3 was
-      // supposed to remove.
-      return { ...createInitialState(action.hole, action.clubId, state.device.address), device: state.device };
+      // Replays the SAME hole (practice: hit the same tee shot repeatedly)
+      // -- not a new range session, so the device stays connected, the aim
+      // zero stays set, and the round-so-far isn't erased. Re-pairing and
+      // re-zeroing on every replay would be exactly the workflow friction
+      // M3 was supposed to remove.
+      return {
+        ...createInitialState(action.hole, action.clubId, state.device.address),
+        courseHoleIndex: state.courseHoleIndex,
+        roundScores: state.roundScores,
+        device: state.device,
+      };
+
+    case "GO_TO_HOLE":
+      // Same posture as RESET, but for a specific hole -- sequential
+      // "next hole" advance and hole-select's "jump here to practice" are
+      // the same transition, just a different index.
+      return {
+        ...createInitialState(action.hole, action.clubId, state.device.address),
+        courseHoleIndex: action.index,
+        roundScores: state.roundScores,
+        device: state.device,
+      };
+
+    case "NEW_ROUND":
+      // Unlike RESET/GO_TO_HOLE, deliberately clears roundScores -- this is
+      // "start over," not "replay/jump while keeping the card so far."
+      return {
+        ...createInitialState(action.hole, action.clubId, state.device.address),
+        device: state.device,
+      };
 
     case "SET_DEVICE_ADDRESS":
       return { ...state, device: { ...state.device, address: action.address } };
@@ -315,6 +355,8 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 export function createInitialState(hole: Hole, initialClubId: ClubId, initialDeviceAddress: string = DEFAULT_DEVICE_ADDRESS): GameState {
   return {
     hole,
+    courseHoleIndex: 0,
+    roundScores: {},
     ballPos: hole.tee,
     aimOffsetDeg: 0,
     selectedClubId: initialClubId,
