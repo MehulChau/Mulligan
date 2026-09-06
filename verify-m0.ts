@@ -10,8 +10,9 @@
  * DEFAULT_AERO -- see packages/physics/tests/fixtures/golden.json (the
  * single source of truth this table is copied from) and CLAUDE.md's
  * calibration section for why. Last updated 2026-09-06 after the Part B
- * Trackman calibration -- descent angle is no longer ~44deg for every
- * club by design, not by regression.
+ * calibration rework -- see aero.ts's doc comment for why DEFAULT_AERO
+ * changed a second time the same day (a carry regression the first
+ * Trackman calibration shipped with, caught by a second-opinion review).
  */
 
 import { simulate } from './packages/physics/src/index';
@@ -25,18 +26,18 @@ const RPM = Math.PI / 30;
 
 // expected: [carry yds, apex ft, hang s, descent deg]
 const GOLDEN: Record<string, [number, number, number, number]> = {
-  driver: [226.42,  88, 6.45, 38.2],
-  '3w':   [210.65, 103, 6.78, 44.2],
-  '5w':   [194.30, 105, 6.64, 46.2],
-  '5h':   [171.26,  96, 6.20, 46.4],
-  '6i':   [151.57,  87, 5.77, 47.0],
-  '7i':   [137.95,  77, 5.38, 46.3],
-  '8i':   [125.28,  73, 5.13, 46.9],
-  '9i':   [113.09,  69, 4.88, 47.6],
-  pw:     [ 98.73,  64, 4.61, 48.3],
-  gw:     [ 87.10,  58, 4.29, 47.7],
-  sw:     [ 75.72,  52, 4.00, 47.7],
-  lw:     [ 66.43,  47, 3.77, 48.0],
+  driver: [232.72,  90, 6.56, 38.3],
+  '3w':   [218.74, 111, 7.05, 44.1],
+  '5w':   [201.59, 113, 6.92, 46.2],
+  '5h':   [177.65, 103, 6.43, 46.3],
+  '6i':   [157.56,  91, 5.94, 46.2],
+  '7i':   [143.52,  80, 5.53, 45.4],
+  '8i':   [130.32,  76, 5.27, 46.0],
+  '9i':   [117.57,  71, 5.00, 46.6],
+  pw:     [102.51,  66, 4.71, 47.4],
+  gw:     [ 90.33,  59, 4.37, 46.8],
+  sw:     [ 78.47,  53, 4.07, 46.8],
+  lw:     [ 68.80,  49, 3.83, 47.2],
 };
 
 const TOL: [number, number, number, number] = [0.1, 1.0, 0.05, 0.2];
