@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useFocusTrap } from "../useFocusTrap";
 import { ProvenanceExplainer } from "./ProvenanceExplainer";
 
 export interface OnboardingProps {
@@ -16,6 +17,9 @@ const SCREEN_COUNT = 3;
  */
 export function Onboarding({ onDone }: OnboardingProps) {
   const [screen, setScreen] = useState(0);
+  // Escape skips, same as tapping Skip; no separate trigger element to
+  // restore focus to since this appears on mount, not from a button press.
+  const cardRef = useFocusTrap<HTMLDivElement>(true, onDone);
 
   function next() {
     if (screen < SCREEN_COUNT - 1) setScreen(screen + 1);
@@ -23,8 +27,8 @@ export function Onboarding({ onDone }: OnboardingProps) {
   }
 
   return (
-    <div className="onboarding-backdrop">
-      <div className="onboarding-card">
+    <div className="onboarding-backdrop" role="dialog" aria-modal="true" aria-label="Welcome to Mulligan">
+      <div className="onboarding-card" ref={cardRef}>
         <button type="button" className="onboarding-skip" onClick={onDone}>
           Skip
         </button>

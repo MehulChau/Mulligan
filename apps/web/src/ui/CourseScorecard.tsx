@@ -1,4 +1,5 @@
 import type { Hole } from "@mulligan/game";
+import { useEffect, useRef } from "react";
 
 export interface CourseScorecardProps {
   course: readonly Hole[];
@@ -26,11 +27,23 @@ export function CourseScorecard({ course, roundScores, onNewRound, onHoleSelect 
   const totalStrokes = playedPars.reduce((sum, h) => sum + (roundScores[h.id] ?? 0), 0);
   const allPlayed = playedPars.length === course.length;
 
+  const summaryRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    summaryRef.current?.focus();
+  }, []);
+
   return (
     <div className="scorecard">
       <div className="scorecard-perforation" aria-hidden="true" />
       <div className="scorecard-body">
-        <div className="scorecard-hole">{allPlayed ? "Round complete" : "Round so far"}</div>
+        <div
+          className="scorecard-hole"
+          ref={summaryRef}
+          tabIndex={-1}
+          aria-label={`${allPlayed ? "Round complete" : "Round so far"}. ${playedPars.length} of ${course.length} holes played${playedPars.length > 0 ? `, ${totalStrokes} strokes` : ""}.`}
+        >
+          {allPlayed ? "Round complete" : "Round so far"}
+        </div>
 
         <div className="course-scorecard-rows">
           {course.map((hole, i) => {

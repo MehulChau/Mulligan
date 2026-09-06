@@ -1,5 +1,6 @@
 import { useState, type ChangeEvent, type MouseEvent } from "react";
 import type { DeviceSessionState, ShotSourceMode } from "../game/gameState";
+import { useFocusTrap } from "../useFocusTrap";
 import { AimZeroPanel } from "./AimZeroPanel";
 import { DeviceSourcePanel } from "./DeviceSourcePanel";
 import { ProvenanceExplainer } from "./ProvenanceExplainer";
@@ -44,12 +45,13 @@ export function SettingsSheet({
   onImportSessionFile,
 }: SettingsSheetProps) {
   const [explainerOpen, setExplainerOpen] = useState(false);
+  const sheetRef = useFocusTrap<HTMLDivElement>(open, onClose);
 
   if (!open) return null;
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e: MouseEvent) => e.stopPropagation()} role="dialog" aria-label="Settings">
+      <div ref={sheetRef} className="sheet" onClick={(e: MouseEvent) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Settings">
         <div className="sheet-handle" aria-hidden="true" />
         <div className="sheet-header">
           <span>Settings</span>

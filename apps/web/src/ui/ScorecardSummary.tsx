@@ -1,4 +1,5 @@
 import type { Hole, Point2, ScoreBreakdown } from "@mulligan/game";
+import { useEffect, useRef } from "react";
 import { MiniHoleTrace } from "../game/MiniHoleTrace";
 
 export interface ScorecardSummaryProps {
@@ -30,11 +31,28 @@ export function ScorecardSummary({ hole, breakdown, paths, restSpots, continueLa
   // back to the same "+N" this card already shows next to the total, so
   // showing both would just repeat the number.
   const hasNamedLabel = !/^[+-]?\d+$/.test(breakdown.label);
+
+  // Focus management: a keyboard/screen-reader user needs to hear that the
+  // hole just finished without hunting for it -- move focus to a summary
+  // of the result the instant this card appears, same moment a sighted
+  // player's eye is drawn to the score.
+  const summaryRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    summaryRef.current?.focus();
+  }, []);
+
   return (
     <div className="scorecard">
       <div className="scorecard-perforation" aria-hidden="true" />
       <div className="scorecard-body">
-        <div className="scorecard-hole">{hole.name}</div>
+        <div
+          className="scorecard-hole"
+          ref={summaryRef}
+          tabIndex={-1}
+          aria-label={`${hole.name}, ${breakdown.totalStrokes} strokes, ${breakdown.label}`}
+        >
+          {hole.name}
+        </div>
         <div className="scorecard-score">
           <span className="scorecard-total">{breakdown.totalStrokes}</span>
           <span className="scorecard-topar">{topar}</span>

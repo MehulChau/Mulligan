@@ -22,6 +22,7 @@ import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } fr
 import { expectedCarryYds } from "./game/expectedCarry";
 import { DEFAULT_DEVICE_ADDRESS, createInitialState, gameReducer, type ShotHistoryEntry } from "./game/gameState";
 import { HoleCanvas } from "./game/HoleCanvas";
+import { SURFACE_LABEL } from "./game/surfaceLabels";
 import { usePrefersReducedMotion } from "./motion";
 import { ClubPicker } from "./ui/ClubPicker";
 import { CourseScorecard } from "./ui/CourseScorecard";
@@ -193,6 +194,28 @@ export default function App() {
           provenance: lastEntry.shot.provenance,
         }
       : null;
+
+  // Part E: the canvas is entirely visual -- a blind player needs a text
+  // equivalent that updates as the round progresses. One aria-live=polite
+  // region (announced, never interrupting, per the brief) covering hole/
+  // par, distance/lie/shot number, and the last shot's numbers, since a
+  // shot always changes at least distance+shot number, this fires exactly
+  // when it should without a separate "shot just happened" flag.
+  const roundNarration = useMemo(() => {
+    const holeInfo = `Hole ${state.courseHoleIndex + 1} of ${COURSE.length}, ${state.hole.name}, par ${state.hole.par}.`;
+    if (state.phase === "putting") {
+      const feet = Math.round(state.puttDistanceYds * 3);
+      return `${holeInfo} Putting, ${feet} feet to the hole. Putt ${state.puttAttempts + 1}.`;
+    }
+    if (state.phase === "holed") {
+      return `${holeInfo} Hole complete.`;
+    }
+    const shotInfo = `Shot ${state.strokeCount + 1}. ${Math.round(distanceToPinYds)} yards to the pin, ${SURFACE_LABEL[currentSurface]}.`;
+    const lastShotInfo = readoutData
+      ? ` Last shot: ${readoutData.club.name}, carried ${Math.round(readoutData.carryYds)} yards, ${Math.round(readoutData.totalYds)} total.`
+      : "";
+    return `${holeInfo} ${shotInfo}${lastShotInfo}`;
+  }, [state.courseHoleIndex, state.hole, state.phase, state.strokeCount, state.puttDistanceYds, state.puttAttempts, distanceToPinYds, currentSurface, readoutData]);
 
   // Shared tail for every shot regardless of where the RawShotEvent came
   // from (manual sliders, the simulator, or a real device push) -- reads
@@ -411,6 +434,10 @@ export default function App() {
 
   return (
     <div className="app">
+      {/* The visual header is the quiet TopBar below -- a real (if visually
+          hidden) h1 still matters for screen-reader users navigating by
+          heading, which the redesign otherwise left with none at all. */}
+      <h1 className="sr-only">Mulligan</h1>
       <TopBar
         holeName={state.hole.name}
         holeNumber={state.courseHoleIndex + 1}
@@ -421,6 +448,10 @@ export default function App() {
         onOpenSettings={() => setSettingsOpen(true)}
         connectionDotClassName={connectionDotClass(state.sourceMode, state.device)}
       />
+
+      <div className="sr-only" aria-live="polite" aria-atomic="true">
+        {roundNarration}
+      </div>
 
       {sessionMessage && (
         <div className="session-message">

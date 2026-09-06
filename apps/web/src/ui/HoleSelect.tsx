@@ -1,4 +1,5 @@
 import type { Hole } from "@mulligan/game";
+import { useFocusTrap } from "../useFocusTrap";
 
 export interface HoleSelectProps {
   course: readonly Hole[];
@@ -23,9 +24,15 @@ function toParText(strokes: number, par: number): string {
  * not a once-a-session setting.
  */
 export function HoleSelect({ course, currentIndex, roundScores, onSelect, onClose }: HoleSelectProps) {
+  // Mounted only while open (App.tsx: {holeSelectOpen && <HoleSelect .../>}),
+  // so "open" is always true for the lifetime of this component -- the
+  // trap's cleanup (restoring focus) runs on unmount, which is exactly
+  // when this closes.
+  const sheetRef = useFocusTrap<HTMLDivElement>(true, onClose);
+
   return (
     <div className="sheet-backdrop" onClick={onClose}>
-      <div className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Choose a hole">
+      <div ref={sheetRef} className="sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Choose a hole">
         <div className="sheet-handle" aria-hidden="true" />
         <div className="sheet-header">
           <span>Choose a hole</span>

@@ -2,6 +2,7 @@ import { headingToward, surfaceAt, type Hole, type Point2, type ShotResult, type
 import { radToDeg, degToRad } from "@mulligan/physics";
 import { useEffect, useRef } from "react";
 import { computeCamera, effectiveBounds, screenToYards, yardsToScreen, type Bounds, type Camera } from "./camera";
+import { SURFACE_LABEL } from "./surfaceLabels";
 import {
   AIM_LINE_COLOR,
   APEX_MARKER_COLOR,
@@ -43,15 +44,6 @@ export const AIM_RANGE_DEG = 30;
 const AIM_KEY_STEP_DEG = 1;
 const AIM_KEY_STEP_DEG_FAST = 5;
 
-const SURFACE_LABEL: Record<SurfaceType, string> = {
-  tee: "Tee",
-  fairway: "Fairway",
-  rough: "Rough",
-  green: "Green",
-  bunker: "Bunker",
-  water: "Water",
-  out: "Out of bounds",
-};
 
 export interface HoleCanvasProps {
   hole: Hole;

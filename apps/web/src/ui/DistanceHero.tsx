@@ -1,14 +1,5 @@
 import type { PenaltyKind, SurfaceType } from "@mulligan/game";
-
-const SURFACE_LABEL: Record<SurfaceType, string> = {
-  tee: "Tee",
-  fairway: "Fairway",
-  rough: "Rough",
-  green: "Green",
-  bunker: "Bunker",
-  water: "Water",
-  out: "Out of bounds",
-};
+import { SURFACE_LABEL } from "../game/surfaceLabels";
 
 const PENALTY_MESSAGE: Record<PenaltyKind, string> = {
   water: "In the water — +1, dropping nearby",
