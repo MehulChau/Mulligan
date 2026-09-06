@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { CLUBS, findClub } from "../src/clubs";
+import { CLUBS } from "../src/clubs";
 import { enrichShot } from "../src/enrich";
+import { estimateSpin } from "../src/spin/estimate";
 import type { RawShotEvent } from "../src/types";
 
 describe("enrichShot", () => {
@@ -13,12 +14,16 @@ describe("enrichShot", () => {
     expect(shot.launchDeg).toBe(18.5);
   });
 
-  it("estimates spin from the club profile, scaled by swing speed vs. the club's reference speed", () => {
-    const club = findClub("7i");
-    const raw: RawShotEvent = { ballSpeedMph: club.ballSpeedMph * 1.1, launchDeg: 18.5, timestamp: 1 };
-    const shot = enrichShot(raw, "7i");
-    expect(shot.provenance.spin).toBe("estimated");
-    expect(shot.spinRpm).toBeCloseTo(club.spinRpm * 1.1, 5);
+  it("estimates spin from measured ball speed and launch angle alone, not from the selected club", () => {
+    // Same (ballSpeed, launch) under two different clubId labels must
+    // produce the identical estimated spin -- clubId is a UI label here,
+    // not an input to the estimate.
+    const raw: RawShotEvent = { ballSpeedMph: 106, launchDeg: 18.5, timestamp: 1 };
+    const shotAsSevenIron = enrichShot(raw, "7i");
+    const shotAsSixIron = enrichShot(raw, "6i");
+    expect(shotAsSevenIron.provenance.spin).toBe("estimated");
+    expect(shotAsSevenIron.spinRpm).toBe(shotAsSixIron.spinRpm);
+    expect(shotAsSevenIron.spinRpm).toBe(estimateSpin(106, 18.5).spinRpm);
   });
 
   it("passes through a real spin measurement untouched and marks it measured", () => {

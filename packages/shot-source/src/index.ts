@@ -2,6 +2,9 @@ export { CLUBS, findClub, isWedge, WEDGE_IDS, type ClubId, type ClubProfile } fr
 export type { RawShotEvent, ShotEvent, ShotField, Provenance } from "./types";
 export { enrichShot } from "./enrich";
 
+export type { SpinModelParams } from "./spin/estimate";
+export { DEFAULT_SPIN_MODEL, estimateSpin } from "./spin/estimate";
+
 export type { SwingScalingParams } from "./swing";
 export {
   DEFAULT_SWING_SCALING,
