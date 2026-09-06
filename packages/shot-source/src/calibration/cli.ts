@@ -55,6 +55,12 @@ function main(): void {
   console.log("");
   console.log(`Total weighted error: ${before.totalWeightedError.toFixed(4)} -> ${after.totalWeightedError.toFixed(4)}`);
   console.log(`Converged: ${converged}`);
+  console.log("");
+  console.log("Per-target summary (mean |error|, before -> after) -- check all three before accepting a fit,");
+  console.log("not just the weighted total: it's possible to improve one target while regressing another.");
+  console.log(`  carry:   ${before.meanAbsCarryPct.toFixed(2)}% -> ${after.meanAbsCarryPct.toFixed(2)}%  (max ${before.maxAbsCarryPct.toFixed(2)}% -> ${after.maxAbsCarryPct.toFixed(2)}%)`);
+  console.log(`  apex:    ${before.meanAbsApexPct.toFixed(2)}% -> ${after.meanAbsApexPct.toFixed(2)}%`);
+  console.log(`  descent: ${before.meanAbsDescentDeg.toFixed(2)} deg -> ${after.meanAbsDescentDeg.toFixed(2)} deg`);
 
   const outPath = resolve(process.cwd(), "calibration-output.json");
   writeFileSync(outPath, JSON.stringify(params, null, 2) + "\n");

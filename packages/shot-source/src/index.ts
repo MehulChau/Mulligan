@@ -16,8 +16,8 @@ export {
 } from "./swing";
 export type { Measurement, CarrySummary, DispersionMeasurement } from "./calibration/measurements";
 export { MEASUREMENTS, DISPERSION_MEASUREMENTS } from "./calibration/measurements";
-export type { ClubResidual, FitResiduals } from "./calibration/fit";
-export { computeResiduals, fitAeroParams } from "./calibration/fit";
+export type { ClubResidual, FitResiduals, FitWeights, FitOptions } from "./calibration/fit";
+export { computeResiduals, fitAeroParams, DEFAULT_FIT_WEIGHTS, PHYSICAL_SPIN_DECAY_RATE } from "./calibration/fit";
 
 export type { DispersionParams } from "./dispersion";
 export { DEFAULT_DISPERSION, PERFECT_DISPERSION, sampleStrikeQuality, simulateShot } from "./dispersion";

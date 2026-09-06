@@ -2,55 +2,82 @@
  * The lift/drag coefficient model and spin decay, as a swappable, fully
  * data-driven unit.
  *
- * DEFAULT_AERO was calibrated (2026-09-05) against 8 real, sourced
- * measurements -- Trackman's own published PGA Tour Averages, driver
- * through pitching wedge (see MEASUREMENTS in
- * @mulligan/shot-source/calibration/measurements.ts for the exact
- * numbers and source). Before this, every number here was exactly what
+ * DEFAULT_AERO is calibrated against 8 real, sourced measurements --
+ * Trackman's own published PGA Tour Averages, driver through pitching
+ * wedge (see MEASUREMENTS in
+ * @mulligan/shot-source/calibration/measurements.ts for the exact numbers
+ * and source). Before any calibration, every number here was exactly what
  * the original flight-lab.html prototype used, unvalidated against any
- * real shot, which is why descent angle came out ~43-44 degrees for
- * every club regardless of loft -- physically wrong; a driver and a
- * wedge do not land at the same angle.
+ * real shot, which is why descent angle came out ~43-44 degrees for every
+ * club regardless of loft -- physically wrong; a driver and a wedge do not
+ * land at the same angle.
  *
- * The raw Nelder-Mead fit (fitAeroParams in calibration/fit.ts, run
- * unconstrained) found a lower-error solution than the one below, but it
- * did so by driving spinDecayRate negative -- i.e. spin spontaneously
- * *increasing* during flight, which is not physical, and it is coupled
- * tightly enough to liftCoeff/liftExponent that the two other params
- * cannot simply be kept and the sign flipped back afterward (tried; it
- * makes the fit much worse, not neutral). spinRatioCap and dragCap were
- * also fit to values (1.69, 0.96) far outside the spin-ratio range any
- * of the 8 measurements actually exercise, meaning the fit had no real
- * evidence for those specific numbers -- they just never bound, so the
- * optimizer was free to place them anywhere above the data's range.
+ * **Reworked 2026-09-06 after a second-opinion review of the first
+ * calibration (2026-09-05) found a real regression it had missed.** That
+ * fit weighted descent 5x against carry/apex 1x, on the reasoning that
+ * descent is what disambiguates the (CL, CD) pair carry alone can't. It
+ * did cut mean descent error from 4.6deg to 0.9deg -- but the weighting
+ * bought that by silently pushing mean carry error from 3.9% to 6.4%, a
+ * one-directional bias (every club reading short, worsening from -2.6% at
+ * 152mph to -9.6% at 102mph) that the shipped report never surfaced
+ * because it only ever printed descent accuracy in detail. Two concrete
+ * fixes came out of that review:
  *
- * The numbers below are from a constrained re-fit against the same 8
- * measurements and the same objective (computeResiduals' weighted
- * carry/apex/descent error), with spinDecayRate held strictly positive
- * (physics.invariants.test.ts requires landing spin to be lower than
- * launch spin -- exactly 0 passes the calibration objective just as well
- * but fails that invariant, so the search floor was moved to 0.005) and
- * spinRatioCap/dragCap bounded to a physically generous but sane range.
- * spinDecayRate converged to that floor -- these 8 shots, all similar
- * flight durations, don't contain enough signal to positively identify a
- * decay rate meaningfully above zero; treat 0.005 as "barely enough decay
- * to keep the model's own invariant honest," not as a real measurement of
- * how fast a golf ball's spin actually decays. A future calibration with
- * time-sampled trajectory data (not just endpoint carry/apex/descent)
- * could pin this down properly.
+ * 1. **spinDecayRate is now pinned at 0.033 (PHYSICAL_SPIN_DECAY_RATE in
+ *    calibration/fit.ts), not searched.** The 2026-09-05 version searched
+ *    it, found it wanted to go negative (spin spontaneously increasing in
+ *    flight -- not physical), and concluded from a flawed test (reverting
+ *    just that one parameter on top of an otherwise-unconstrained fit)
+ *    that it was too tightly coupled to the other 7 to pin safely. A
+ *    proper refit -- pin spinDecayRate, re-optimize the other 7 around
+ *    that fixed point, with several random restarts to avoid a bad local
+ *    minimum -- shows that claim doesn't hold: it costs only ~6-7% in
+ *    fit error, not the ~180% the flawed comparison implied. 0.033
+ *    (roughly 3.3%/s) is also the well-documented real-world figure for
+ *    golf ball backspin decay, so this isn't just "a value that fits
+ *    fine" -- it's the physically correct one.
+ * 2. **The carry/apex/descent weighting moved from (1, 1, 5) to (8, 1,
+ *    10)** (DEFAULT_FIT_WEIGHTS in calibration/fit.ts), found via a grid
+ *    search over the weight pair with spinDecayRate held at the pinned
+ *    value from (1). This is a genuine Pareto frontier, not a free lunch:
+ *    pushing descent error much below where it sits here costs carry
+ *    accuracy, and vice versa (see CLAUDE.md's "Part B rework" section for
+ *    the full grid). (8, 10) is the point on that frontier closest to
+ *    simultaneously hitting ~3% carry error and ~1.5deg descent error --
+ *    it does not zero out either.
  *
- * Result, validated against the 8 measurements themselves: descent angle
- * predictions land within ~0.3-2.2 degrees of the real Trackman values
- * across the whole driver-to-PW range (38 degrees to 52 degrees). Applied
- * to this game's own CLUBS presets (not the measurements directly --
- * CLUBS is a generic, not-yet-player-calibrated bag, a separate gap
- * `npm run rescale-clubs` exists for), the visible in-game spread is
- * real but more compressed: ~38 degrees for the driver up to ~44-48
- * degrees across the rest of the bag, rather than smoothly climbing to
- * 52 like the raw tour data. See CLAUDE.md for the full before/after
- * table and why the two views differ. Retuning further is the
- * calibration harness's job (@mulligan/shot-source/calibration/fit.ts),
- * driven by more/better MEASUREMENTS, not a hand-edit here.
+ * Result, validated against the 8 measurements themselves (report all
+ * three targets, not just descent -- that asymmetry is exactly what let
+ * the first calibration's carry regression go unnoticed): mean carry
+ * error 6.4% -> 3.3% (max 9.6% -> 6.9%), mean descent error 4.6deg ->
+ * 1.5deg. Mean apex error moved from 5.1% to 8.7% -- apex was never an
+ * explicit target of the rebalancing and is the one place this fit is
+ * worse than the 2026-09-05 version; it wasn't traded against on purpose,
+ * it's a side effect of the reweighting, and is left as a known gap
+ * rather than chased with a third weight, since carry and descent were
+ * the two explicitly requested targets.
+ *
+ * The functional form itself (CL = liftCoeff * S^liftExponent capped, CD
+ * = dragBase + dragSlope * S capped) was considered for extension -- real
+ * golf ball drag depends on Reynolds number as well as spin ratio, and a
+ * sigmoid-shaped transition around a critical speed (the "drag crisis")
+ * is the physically motivated way to add that, not a linear speed term
+ * (tried during this rework; the fit drove its coefficient to zero,
+ * meaning the data doesn't support even that simple an extension). Not
+ * pursued further because the reweighted fit above already meets the
+ * explicit carry/descent targets without it -- extending AeroParams is a
+ * larger, riskier change than this rework needed, and "don't ship
+ * complexity that isn't demonstrably earning its keep" applies here same
+ * as anywhere else in this codebase.
+ *
+ * Applied to this game's own CLUBS presets (not the measurements directly
+ * -- CLUBS is a generic, not-yet-player-calibrated bag, a separate gap
+ * `npm run rescale-clubs` exists for), the visible in-game descent spread
+ * is real but more compressed than the raw tour data's smooth climb to
+ * 52deg. See CLAUDE.md for the full before/after table and why the two
+ * views differ. Retuning further is the calibration harness's job
+ * (@mulligan/shot-source/calibration/fit.ts), driven by more/better
+ * MEASUREMENTS, not a hand-edit here.
  */
 
 export interface AeroParams {
@@ -69,14 +96,14 @@ export interface AeroParams {
 }
 
 export const DEFAULT_AERO: AeroParams = {
-  spinRatioCap: 1.16,
-  liftCoeff: 0.882,
-  liftExponent: 0.714,
-  liftCap: 0.345,
-  dragBase: 0.251,
-  dragSlope: 0.271,
-  dragCap: 0.531,
-  spinDecayRate: 0.005,
+  spinRatioCap: 1.326,
+  liftCoeff: 1.059,
+  liftExponent: 0.793,
+  liftCap: 0.348,
+  dragBase: 0.243,
+  dragSlope: 0.250,
+  dragCap: 0.478,
+  spinDecayRate: 0.033,
 };
 
 export interface AeroModel {

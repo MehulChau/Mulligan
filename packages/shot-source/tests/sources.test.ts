@@ -50,12 +50,14 @@ describe("SimulatedShotSource", () => {
     const source = new SimulatedShotSource({ dispersion: PERFECT_DISPERSION, seed: 1, fidelity: "full" });
     await source.start();
 
-    // Updated post-calibration (see CLAUDE.md's Part B section) --
-    // DEFAULT_AERO was fit to real Trackman data 2026-09-05/06.
+    // Updated post-calibration (see CLAUDE.md's Part B/Part B rework
+    // sections) -- DEFAULT_AERO was fit to real Trackman data, then
+    // reworked 2026-09-06 to fix a carry regression the first fit shipped
+    // with (see aero.ts's doc comment).
     const cases: Array<[ClubId, number]> = [
-      ["driver", 226.42],
-      ["7i", 137.95],
-      ["lw", 66.43],
+      ["driver", 232.72],
+      ["7i", 143.52],
+      ["lw", 68.8],
     ];
 
     for (const [clubId, goldenCarryYds] of cases) {
