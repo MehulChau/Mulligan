@@ -145,10 +145,13 @@ describe("resolveShot", () => {
     expect(Math.abs(result.carryYds - 226.27)).toBeLessThanOrEqual(0.1);
   });
 
-  it("total distance is carry plus the M1 rollout placeholder, consistently", () => {
+  it("total distance is carry plus the surface-aware rollout, consistently", () => {
     const shot = shotFor("7i");
     const result = resolveShot(SIMPLE_HOLE, { x: 0, y: 0 }, 0, shot);
-    const expectedRollout = estimateRollout(result.trajectory.landing);
+    const { x: vx, z: vz } = result.trajectory.landing.velocity;
+    const horizontalSpeed = Math.hypot(vx, vz);
+    const rollDir = horizontalSpeed > 0 ? { d: vx / horizontalSpeed, l: vz / horizontalSpeed } : { d: 1, l: 0 };
+    const expectedRollout = estimateRollout(result.trajectory.landing, SIMPLE_HOLE, result.landing, rollDir);
     expect(result.totalYds).toBeCloseTo(result.carryYds + expectedRollout, 6);
     expect(result.rest.y).toBeGreaterThan(result.landing.y); // rolled further downrange
   });

@@ -54,8 +54,6 @@ export function resolveShot(hole: Hole, ballPos: Point2, aimHeadingRad: number, 
 
   const carryYds = metersToYards(trajectory.carry);
   const lateralYds = metersToYards(trajectory.lateral);
-  const rolloutYds = estimateRollout(trajectory.landing);
-  const totalYds = carryYds + rolloutYds; // scalar carry+roll, launch-monitor convention -- see ShotResult.totalYds doc
 
   const landing = localToHole(ballPos, aimHeadingRad, { d: carryYds, l: lateralYds });
 
@@ -66,6 +64,14 @@ export function resolveShot(hole: Hole, ballPos: Point2, aimHeadingRad: number, 
   const { x: vx, z: vz } = trajectory.landing.velocity;
   const horizontalSpeed = Math.hypot(vx, vz);
   const rollDir = horizontalSpeed > 0 ? { d: vx / horizontalSpeed, l: vz / horizontalSpeed } : { d: 1, l: 0 };
+
+  // Surface-aware: needs the hole, the landing point, and the roll
+  // direction so it can re-check which surface the ball is over as it
+  // travels (a drive landing on fairway that rolls into rough stops where
+  // the rough stops it, not at the fairway-only distance).
+  const rolloutYds = estimateRollout(trajectory.landing, hole, landing, rollDir);
+  const totalYds = carryYds + rolloutYds; // scalar carry+roll, launch-monitor convention -- see ShotResult.totalYds doc
+
   const rest = localToHole(ballPos, aimHeadingRad, {
     d: carryYds + rolloutYds * rollDir.d,
     l: lateralYds + rolloutYds * rollDir.l,

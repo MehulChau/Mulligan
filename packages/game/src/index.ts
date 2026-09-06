@@ -6,7 +6,8 @@ export { pointInPolygon, surfaceAt } from "./surface";
 
 export type { LocalOffset } from "./resolver/rotate";
 export { localToHole, holeToLocal, headingToward } from "./resolver/rotate";
-export { estimateRollout } from "./resolver/rollout";
+export type { RolloutSurface, SurfaceRolloutParams } from "./resolver/rollout";
+export { DEFAULT_SURFACE_ROLLOUT, estimateRollout } from "./resolver/rollout";
 export type { ShotResult } from "./resolver/resolveShot";
 export { resolveShot } from "./resolver/resolveShot";
 
