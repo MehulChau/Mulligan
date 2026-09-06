@@ -32,6 +32,7 @@ import { ManualEntryPanel } from "./ui/ManualEntryPanel";
 import { Onboarding } from "./ui/Onboarding";
 import { PuttingPanel } from "./ui/PuttingPanel";
 import { ScorecardSummary } from "./ui/ScorecardSummary";
+import { SessionReview } from "./ui/SessionReview";
 import { SettingsSheet } from "./ui/SettingsSheet";
 import { ShotReadout, type ShotReadoutData } from "./ui/ShotReadout";
 import { SwingFractionSlider } from "./ui/SwingFractionSlider";
@@ -120,6 +121,7 @@ export default function App() {
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [holeSelectOpen, setHoleSelectOpen] = useState(false);
+  const [sessionReviewOpen, setSessionReviewOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => !readOnboardingSeen());
 
   function handleOnboardingDone(): void {
@@ -598,7 +600,19 @@ export default function App() {
         onAimZeroCancel={() => dispatch({ type: "CANCEL_AIM_ZERO_CALIBRATION" })}
         onExportSession={handleExportSession}
         onImportSessionFile={handleImportSessionFile}
+        onOpenSessionReview={() => {
+          setSettingsOpen(false);
+          setSessionReviewOpen(true);
+        }}
       />
+
+      {sessionReviewOpen && (
+        <SessionReview
+          entries={shotLogRef.current?.getSession(sessionIdRef.current) ?? []}
+          onClose={() => setSessionReviewOpen(false)}
+          onExport={handleExportSession}
+        />
+      )}
 
       {holeSelectOpen && (
         <HoleSelect

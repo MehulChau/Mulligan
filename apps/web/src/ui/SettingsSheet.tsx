@@ -20,6 +20,7 @@ export interface SettingsSheetProps {
   onAimZeroCancel: () => void;
   onExportSession: () => void;
   onImportSessionFile: (e: ChangeEvent<HTMLInputElement>) => void;
+  onOpenSessionReview: () => void;
 }
 
 /**
@@ -43,6 +44,7 @@ export function SettingsSheet({
   onAimZeroCancel,
   onExportSession,
   onImportSessionFile,
+  onOpenSessionReview,
 }: SettingsSheetProps) {
   const [explainerOpen, setExplainerOpen] = useState(false);
   const sheetRef = useFocusTrap<HTMLDivElement>(open, onClose);
@@ -97,6 +99,9 @@ export function SettingsSheet({
         {explainerOpen && <ProvenanceExplainer />}
 
         <div className="sheet-section-label">Session</div>
+        <button type="button" className="device-action device-action-quiet settings-explainer-toggle" onClick={onOpenSessionReview}>
+          Review this session
+        </button>
         <div className="sheet-session-row">
           <button type="button" className="session-tool-btn" onClick={onExportSession}>
             Export session
