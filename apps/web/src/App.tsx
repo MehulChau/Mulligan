@@ -23,7 +23,6 @@ import { expectedCarryYds } from "./game/expectedCarry";
 import { DEFAULT_DEVICE_ADDRESS, createInitialState, gameReducer, type ShotHistoryEntry } from "./game/gameState";
 import { HoleCanvas } from "./game/HoleCanvas";
 import { usePrefersReducedMotion } from "./motion";
-import { AimSlider } from "./ui/AimSlider";
 import { ClubPicker } from "./ui/ClubPicker";
 import { CourseScorecard } from "./ui/CourseScorecard";
 import { DistanceHero } from "./ui/DistanceHero";
@@ -157,11 +156,6 @@ export default function App() {
       // field doesn't remember itself next launch.
     }
   }, [state.device.address]);
-
-  const aimHeadingRad = useMemo(
-    () => headingToward(state.ballPos, state.hole.pin) + degToRad(state.aimOffsetDeg),
-    [state.ballPos, state.hole.pin, state.aimOffsetDeg],
-  );
 
   const distanceToPinYds = useMemo(
     () => Math.hypot(state.hole.pin.x - state.ballPos.x, state.hole.pin.y - state.ballPos.y),
@@ -445,7 +439,10 @@ export default function App() {
         <HoleCanvas
           hole={state.hole}
           ballPos={state.ballPos}
-          aimHeadingRad={aimHeadingRad}
+          aimOffsetDeg={state.aimOffsetDeg}
+          onAimChange={(deg) => dispatch({ type: "SET_AIM_OFFSET_DEG", deg })}
+          aimLocked={controlsDisabled}
+          expectedCarryYds={clubExpectedCarry}
           previousPaths={previousPaths}
           previousRestSpots={previousRestSpots}
           pendingShot={state.pendingShot?.result ?? null}
@@ -483,12 +480,6 @@ export default function App() {
 
           {state.phase === "shot" && (
             <div className="controls">
-              <AimSlider
-                aimOffsetDeg={state.aimOffsetDeg}
-                disabled={controlsDisabled}
-                onChange={(deg) => dispatch({ type: "SET_AIM_OFFSET_DEG", deg })}
-              />
-
               {state.sourceMode === "simulated" && wedgeSelected && (
                 <SwingFractionSlider
                   fraction={state.swingFraction}

@@ -1,6 +1,7 @@
-import type { Hole, Point2, ShotResult, SurfacePolygon } from "@mulligan/game";
+import { headingToward, surfaceAt, type Hole, type Point2, type ShotResult, type SurfacePolygon, type SurfaceType } from "@mulligan/game";
+import { radToDeg, degToRad } from "@mulligan/physics";
 import { useEffect, useRef } from "react";
-import { computeCamera, effectiveBounds, yardsToScreen, type Bounds, type Camera } from "./camera";
+import { computeCamera, effectiveBounds, screenToYards, yardsToScreen, type Bounds, type Camera } from "./camera";
 import {
   AIM_LINE_COLOR,
   APEX_MARKER_COLOR,
@@ -32,17 +33,36 @@ import {
 const FLIGHT_DURATION_MS = 1200;
 const ROLL_DURATION_MS = 380;
 const IMPACT_RING_DURATION_MS = 260;
-const AIM_LINE_LENGTH_YDS = 25;
 const MAX_LIFT_PX = 42; // how far the ball rises above its shadow at apex, in screen pixels
 const YARDAGE_MARK_INTERVAL = 50;
 // Fraction of full opacity at the trailing (tee) end of a fading trace --
 // never fully invisible, just clearly secondary to the leading/ball end.
 const TRACE_TEE_ALPHA_FRACTION = 0.22;
+/** Matches the old AimSlider's range -- how far off "aimed at pin" a drag/keyboard nudge can go. */
+export const AIM_RANGE_DEG = 30;
+const AIM_KEY_STEP_DEG = 1;
+const AIM_KEY_STEP_DEG_FAST = 5;
+
+const SURFACE_LABEL: Record<SurfaceType, string> = {
+  tee: "Tee",
+  fairway: "Fairway",
+  rough: "Rough",
+  green: "Green",
+  bunker: "Bunker",
+  water: "Water",
+  out: "Out of bounds",
+};
 
 export interface HoleCanvasProps {
   hole: Hole;
   ballPos: Point2;
-  aimHeadingRad: number;
+  /** Degrees, relative to "aimed at the pin" -- the committed value; drag/keyboard interaction lives inside this component and reports changes via onAimChange. */
+  aimOffsetDeg: number;
+  onAimChange: (deg: number) => void;
+  /** Disables the aim gesture (mid-flight, or between holes) -- dragging then would change where a shot that isn't happening yet would go, with nothing to show for it. */
+  aimLocked: boolean;
+  /** The selected club's expected carry, yards -- where the target marker and the live carry/surface readout sit along the aim line. */
+  expectedCarryYds: number;
   previousPaths: Point2[][]; // faint full flight paths of prior shots this session
   previousRestSpots: Point2[]; // where each of those shots came to rest
   pendingShot: ShotResult | null; // set to animate a new shot; cleared by caller after onShotSettled
@@ -90,6 +110,16 @@ export function HoleCanvas(props: HoleCanvasProps) {
     null,
   );
 
+  // The latest camera, kept in sync every frame -- pointer events fire
+  // independently of the rAF loop and need to convert a screen point to
+  // hole-space coordinates (screenToYards) using whatever camera is
+  // currently on screen.
+  const cameraRef = useRef<Camera | null>(null);
+  // Non-null only while an aim drag is active: the live (uncommitted-to-
+  // React-yet) aim offset, so the line/target marker track the pointer
+  // with zero lag instead of waiting a render cycle on every pointermove.
+  const liveAimDegRef = useRef<number | null>(null);
+
   // Start (or skip) an animation whenever a new pendingShot arrives.
   useEffect(() => {
     if (!props.pendingShot) return;
@@ -128,6 +158,73 @@ export function HoleCanvas(props: HoleCanvasProps) {
     const resizeObserver = new ResizeObserver(resize);
     resizeObserver.observe(container);
 
+    // Part D: drag-to-aim. Converts a pointer position anywhere on the
+    // canvas into an aim offset (the heading from the ball through that
+    // point, relative to "aimed at the pin"), rather than requiring the
+    // drag to start on the aim line itself -- "point your thumb where you
+    // want the ball to go" is the whole interaction, with no separate grab
+    // handle to find first.
+    function aimDegFromClientPoint(clientX: number, clientY: number): number | null {
+      const camera = cameraRef.current;
+      if (!camera) return null;
+      const rect = canvas!.getBoundingClientRect();
+      const holePt = screenToYards(camera, { x: clientX - rect.left, y: clientY - rect.top });
+      const { ballPos, hole } = propsRef.current;
+      const baseHeadingRad = headingToward(ballPos, hole.pin);
+      const pointHeadingRad = headingToward(ballPos, holePt);
+      let deg = radToDeg(pointHeadingRad - baseHeadingRad);
+      deg = ((deg + 180) % 360 + 360) % 360 - 180; // normalize to (-180, 180]
+      return Math.max(-AIM_RANGE_DEG, Math.min(AIM_RANGE_DEG, deg));
+    }
+
+    let dragging = false;
+
+    function handlePointerDown(e: PointerEvent) {
+      if (propsRef.current.aimLocked) return;
+      const deg = aimDegFromClientPoint(e.clientX, e.clientY);
+      if (deg === null) return;
+      dragging = true;
+      canvas!.setPointerCapture(e.pointerId);
+      liveAimDegRef.current = deg;
+      propsRef.current.onAimChange(deg);
+    }
+    function handlePointerMove(e: PointerEvent) {
+      if (!dragging) return;
+      const deg = aimDegFromClientPoint(e.clientX, e.clientY);
+      if (deg === null) return;
+      liveAimDegRef.current = deg;
+      propsRef.current.onAimChange(deg);
+    }
+    function handlePointerUp(e: PointerEvent) {
+      if (!dragging) return;
+      dragging = false;
+      liveAimDegRef.current = null;
+      try {
+        canvas!.releasePointerCapture(e.pointerId);
+      } catch {
+        // Already released (e.g. pointercancel beat us to it) -- fine.
+      }
+    }
+    canvas.addEventListener("pointerdown", handlePointerDown);
+    canvas.addEventListener("pointermove", handlePointerMove);
+    canvas.addEventListener("pointerup", handlePointerUp);
+    canvas.addEventListener("pointercancel", handlePointerUp);
+
+    // Keyboard path (Part D + Part E): arrow keys nudge aim, shift+arrow
+    // for a bigger step -- desktop and accessibility both need a way to
+    // aim that isn't a drag gesture.
+    function handleKeyDown(e: KeyboardEvent) {
+      if (propsRef.current.aimLocked) return;
+      let delta = 0;
+      if (e.key === "ArrowLeft") delta = -(e.shiftKey ? AIM_KEY_STEP_DEG_FAST : AIM_KEY_STEP_DEG);
+      else if (e.key === "ArrowRight") delta = e.shiftKey ? AIM_KEY_STEP_DEG_FAST : AIM_KEY_STEP_DEG;
+      else return;
+      e.preventDefault();
+      const next = Math.max(-AIM_RANGE_DEG, Math.min(AIM_RANGE_DEG, propsRef.current.aimOffsetDeg + delta));
+      propsRef.current.onAimChange(next);
+    }
+    canvas.addEventListener("keydown", handleKeyDown);
+
     function getBackground(camera: Camera, w: number, h: number, hole: Hole): HTMLCanvasElement {
       const cached = bgCacheRef.current;
       if (
@@ -163,7 +260,7 @@ export function HoleCanvas(props: HoleCanvasProps) {
     function frame(now: number) {
       const w = container!.clientWidth;
       const h = container!.clientHeight;
-      const { hole, ballPos, aimHeadingRad, previousPaths, previousRestSpots } = propsRef.current;
+      const { hole, ballPos, aimOffsetDeg, expectedCarryYds, previousPaths, previousRestSpots } = propsRef.current;
       const anim = animRef.current;
 
       // The static hole bounds don't guarantee every ball position stays in
@@ -179,6 +276,7 @@ export function HoleCanvas(props: HoleCanvasProps) {
       }
       const bounds = effectiveBounds(hole.bounds, critical);
       const camera = computeCamera(bounds, w, h);
+      cameraRef.current = camera;
 
       const bg = getBackground(camera, w, h, hole);
       ctx!.clearRect(0, 0, w, h);
@@ -207,7 +305,15 @@ export function HoleCanvas(props: HoleCanvasProps) {
           propsRef.current.onShotSettled();
         }
       } else {
-        drawAimLine(ctx!, camera, ballPos, aimHeadingRad);
+        const liveDeg = liveAimDegRef.current ?? aimOffsetDeg;
+        const aimHeadingRad = headingToward(ballPos, hole.pin) + degToRad(liveDeg);
+        const carryYds = Math.max(5, expectedCarryYds);
+        const target: Point2 = {
+          x: ballPos.x + carryYds * Math.sin(aimHeadingRad),
+          y: ballPos.y + carryYds * Math.cos(aimHeadingRad),
+        };
+        drawAimLine(ctx!, camera, ballPos, target);
+        drawTargetMarker(ctx!, camera, target, carryYds, surfaceAt(hole, target));
         drawBallWithShadow(ctx!, camera, ballPos, 0);
       }
 
@@ -238,12 +344,32 @@ export function HoleCanvas(props: HoleCanvasProps) {
       cancelAnimationFrame(rafId);
       resizeObserver.disconnect();
       document.removeEventListener("visibilitychange", handleVisibilityChange);
+      canvas.removeEventListener("pointerdown", handlePointerDown);
+      canvas.removeEventListener("pointermove", handlePointerMove);
+      canvas.removeEventListener("pointerup", handlePointerUp);
+      canvas.removeEventListener("pointercancel", handlePointerUp);
+      canvas.removeEventListener("keydown", handleKeyDown);
     };
   }, []);
 
+  const ariaValueDeg = Math.round(props.aimOffsetDeg);
+  const ariaLabel =
+    ariaValueDeg === 0 ? "Aim: aimed at the pin" : `Aim: ${Math.abs(ariaValueDeg)} degrees ${ariaValueDeg > 0 ? "right" : "left"} of the pin`;
+
   return (
     <div ref={containerRef} style={{ width: "100%", height: "100%", touchAction: "none" }}>
-      <canvas ref={canvasRef} style={{ display: "block" }} />
+      <canvas
+        ref={canvasRef}
+        className="hole-canvas"
+        style={{ display: "block" }}
+        tabIndex={props.aimLocked ? -1 : 0}
+        role="slider"
+        aria-label={ariaLabel}
+        aria-valuemin={-AIM_RANGE_DEG}
+        aria-valuemax={AIM_RANGE_DEG}
+        aria-valuenow={ariaValueDeg}
+        aria-valuetext={ariaLabel.replace("Aim: ", "")}
+      />
     </div>
   );
 }
@@ -560,13 +686,10 @@ function drawBallWithShadow(ctx: CanvasRenderingContext2D, camera: Camera, groun
   ctx.stroke();
 }
 
-function drawAimLine(ctx: CanvasRenderingContext2D, camera: Camera, ballPos: Point2, headingRad: number) {
-  const tip: Point2 = {
-    x: ballPos.x + AIM_LINE_LENGTH_YDS * Math.sin(headingRad),
-    y: ballPos.y + AIM_LINE_LENGTH_YDS * Math.cos(headingRad),
-  };
+/** Part D: the aim line now runs all the way to the target marker (the selected club's expected carry along the current aim), not a fixed decorative length. */
+function drawAimLine(ctx: CanvasRenderingContext2D, camera: Camera, ballPos: Point2, target: Point2) {
   const from = yardsToScreen(camera, ballPos);
-  const to = yardsToScreen(camera, tip);
+  const to = yardsToScreen(camera, target);
   ctx.strokeStyle = AIM_LINE_COLOR;
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4, 5]);
@@ -575,6 +698,48 @@ function drawAimLine(ctx: CanvasRenderingContext2D, camera: Camera, ballPos: Poi
   ctx.lineTo(to.x, to.y);
   ctx.stroke();
   ctx.setLineDash([]);
+}
+
+/**
+ * Where the current club's expected carry would land on the current aim
+ * line, and what's there -- "choose a target," not "rotate a number."
+ * Drawn every idle frame (cheap: one small ring, a couple of short text
+ * calls), not cached, since it moves continuously during a drag.
+ */
+function drawTargetMarker(ctx: CanvasRenderingContext2D, camera: Camera, target: Point2, carryYds: number, surface: SurfaceType) {
+  const s = yardsToScreen(camera, target);
+  ctx.save();
+  ctx.strokeStyle = AIM_LINE_COLOR;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(s.x, s.y, 7, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(s.x - 3, s.y);
+  ctx.lineTo(s.x + 3, s.y);
+  ctx.moveTo(s.x, s.y - 3);
+  ctx.lineTo(s.x, s.y + 3);
+  ctx.stroke();
+
+  const label = `${Math.round(carryYds)} yds · ${SURFACE_LABEL[surface]}`;
+  ctx.font = "700 11px Archivo, sans-serif";
+  const metrics = ctx.measureText(label);
+  const padX = 6;
+  const boxW = metrics.width + padX * 2;
+  const boxH = 18;
+  const boxY = s.y - 11 - boxH;
+  ctx.fillStyle = "rgba(13,59,37,0.82)";
+  const bx = s.x - boxW / 2;
+  const radius = 5;
+  ctx.beginPath();
+  ctx.roundRect(bx, boxY, boxW, boxH, radius);
+  ctx.fill();
+  ctx.fillStyle = "#F4F1E8";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(label, s.x, boxY + boxH / 2 + 0.5);
+  ctx.textAlign = "left";
+  ctx.restore();
 }
 
 function rgbaWithAlpha(color: string, alpha: number): string {

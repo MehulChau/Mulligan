@@ -262,6 +262,20 @@ body {
   overflow: hidden;
   margin-bottom: 6px;
 }
+/* Part D/E: the canvas is the aim control (drag or arrow keys) -- it needs
+   a real focus ring for keyboard users, same as any other interactive
+   control, even though it's not shaped like one. */
+.hole-canvas {
+  outline: none;
+  cursor: grab;
+}
+.hole-canvas:active {
+  cursor: grabbing;
+}
+.hole-canvas:focus-visible {
+  outline: 3px solid var(--green);
+  outline-offset: -3px;
+}
 
 /* ---------- Shot readout (Part 4): the signature moment ---------- */
 .readout {
@@ -392,9 +406,6 @@ body {
   padding-bottom: 2px;
 }
 
-.aim-ctl {
-  margin-bottom: 8px;
-}
 .swing-ctl {
   margin-bottom: 10px;
 }
@@ -1167,9 +1178,6 @@ input[type="range"]:disabled {
   }
   .mode-toggle {
     margin-bottom: 6px;
-  }
-  .aim-ctl {
-    margin-bottom: 4px;
   }
   .swing-ctl {
     margin-bottom: 6px;
