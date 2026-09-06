@@ -1015,6 +1015,131 @@ input[type="range"]:disabled {
   color: var(--sub);
 }
 
+/* ---------- Provenance explainer (Part C): shared by onboarding and Settings ---------- */
+.provenance-explainer {
+  margin: 10px 0;
+}
+.provenance-explainer-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.provenance-explainer-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+.provenance-explainer-title {
+  font-size: 13px;
+  font-weight: 800;
+  margin-bottom: 2px;
+}
+.provenance-explainer-body {
+  font-size: 12px;
+  color: var(--sub);
+  line-height: 1.4;
+}
+.provenance-explainer-note {
+  font-size: 11px;
+  color: var(--sub);
+  line-height: 1.4;
+  padding-top: 4px;
+  border-top: 1px solid var(--line);
+}
+.settings-explainer-toggle {
+  width: 100%;
+}
+
+/* ---------- Onboarding (Part C): first run only, skippable, never shown twice ---------- */
+.onboarding-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  padding: max(16px, env(safe-area-inset-top)) max(18px, env(safe-area-inset-right))
+    max(16px, env(safe-area-inset-bottom)) max(18px, env(safe-area-inset-left));
+}
+.onboarding-card {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+}
+.onboarding-skip {
+  align-self: flex-end;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--sub);
+  background: none;
+  border: none;
+  min-height: 44px;
+  padding: 0 4px;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.onboarding-screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0 6px;
+  animation: sheet-backdrop-in var(--dur-fast) var(--ease);
+}
+.onboarding-icon {
+  font-size: 44px;
+  margin-bottom: 18px;
+}
+.onboarding-screen h2 {
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 0 0 10px;
+}
+.onboarding-screen p {
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--sub);
+  margin: 0;
+  max-width: 340px;
+}
+.onboarding-screen .provenance-explainer {
+  text-align: left;
+  margin-top: 20px;
+  max-width: 340px;
+}
+.onboarding-footer {
+  flex-shrink: 0;
+  padding-top: 16px;
+}
+.onboarding-dots {
+  display: flex;
+  justify-content: center;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+.onboarding-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--track);
+}
+.onboarding-dot.on {
+  background: var(--green);
+}
+.onboarding-next {
+  width: 100%;
+}
+
 /* Short phones (SE-class, or a phone with the keyboard/browser chrome
    eating vertical space): trim the least essential vertical costs first
    rather than letting the canvas get squeezed to nothing. */

@@ -1,7 +1,8 @@
-import type { ChangeEvent, MouseEvent } from "react";
+import { useState, type ChangeEvent, type MouseEvent } from "react";
 import type { DeviceSessionState, ShotSourceMode } from "../game/gameState";
 import { AimZeroPanel } from "./AimZeroPanel";
 import { DeviceSourcePanel } from "./DeviceSourcePanel";
+import { ProvenanceExplainer } from "./ProvenanceExplainer";
 import { SourceModeToggle } from "./SourceModeToggle";
 
 export interface SettingsSheetProps {
@@ -42,6 +43,8 @@ export function SettingsSheet({
   onExportSession,
   onImportSessionFile,
 }: SettingsSheetProps) {
+  const [explainerOpen, setExplainerOpen] = useState(false);
+
   if (!open) return null;
 
   return (
@@ -79,6 +82,17 @@ export function SettingsSheet({
             onCancel={onAimZeroCancel}
           />
         )}
+
+        <div className="sheet-section-label">About the numbers</div>
+        <button
+          type="button"
+          className="device-action device-action-quiet settings-explainer-toggle"
+          onClick={() => setExplainerOpen((v) => !v)}
+          aria-expanded={explainerOpen}
+        >
+          What's measured vs. estimated?
+        </button>
+        {explainerOpen && <ProvenanceExplainer />}
 
         <div className="sheet-section-label">Session</div>
         <div className="sheet-session-row">

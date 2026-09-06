@@ -29,6 +29,7 @@ import { CourseScorecard } from "./ui/CourseScorecard";
 import { DistanceHero } from "./ui/DistanceHero";
 import { HoleSelect } from "./ui/HoleSelect";
 import { ManualEntryPanel } from "./ui/ManualEntryPanel";
+import { Onboarding } from "./ui/Onboarding";
 import { PuttingPanel } from "./ui/PuttingPanel";
 import { ScorecardSummary } from "./ui/ScorecardSummary";
 import { SettingsSheet } from "./ui/SettingsSheet";
@@ -39,12 +40,21 @@ import "./App.css";
 
 const INITIAL_CLUB = "7i";
 const DEVICE_ADDRESS_STORAGE_KEY = "mulligan:device-address";
+const ONBOARDING_SEEN_KEY = "mulligan:onboarding-seen";
 
 function readStoredDeviceAddress(): string {
   try {
     return localStorage.getItem(DEVICE_ADDRESS_STORAGE_KEY) ?? DEFAULT_DEVICE_ADDRESS;
   } catch {
     return DEFAULT_DEVICE_ADDRESS;
+  }
+}
+
+function readOnboardingSeen(): boolean {
+  try {
+    return localStorage.getItem(ONBOARDING_SEEN_KEY) === "1";
+  } catch {
+    return false; // private window or disabled storage -- show it once per tab session rather than never
   }
 }
 
@@ -110,6 +120,16 @@ export default function App() {
   const [sessionMessage, setSessionMessage] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [holeSelectOpen, setHoleSelectOpen] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(() => !readOnboardingSeen());
+
+  function handleOnboardingDone(): void {
+    setShowOnboarding(false);
+    try {
+      localStorage.setItem(ONBOARDING_SEEN_KEY, "1");
+    } catch {
+      // Best effort -- worst case it shows again next launch in a private window.
+    }
+  }
   const reducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
@@ -567,6 +587,8 @@ export default function App() {
           onClose={() => setHoleSelectOpen(false)}
         />
       )}
+
+      {showOnboarding && <Onboarding onDone={handleOnboardingDone} />}
     </div>
   );
 }
