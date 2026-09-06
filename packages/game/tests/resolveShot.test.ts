@@ -133,10 +133,16 @@ describe("resolveShot", () => {
     expect(result.landingSurface).toBe("fairway");
   });
 
-  it("matches the M0 golden carry for a straight driver shot", () => {
+  it("matches the golden carry for a straight driver shot", () => {
+    // Updated post-calibration (see CLAUDE.md's Part B section) --
+    // DEFAULT_AERO was fit to real Trackman data 2026-09-05/06. Also
+    // reflects Part A: shotFor() omits spinRpm, so this now goes through
+    // enrichShot's estimateSpin(150, 12.5) = ~2787.5rpm rather than the
+    // exact driver preset's 2800rpm, hence 226.27 here vs. the pure-preset
+    // 226.42 in physics/tests/fixtures/golden.json.
     const shot = shotFor("driver");
     const result = resolveShot(SIMPLE_HOLE, { x: 0, y: 0 }, 0, shot);
-    expect(Math.abs(result.carryYds - 224.44)).toBeLessThanOrEqual(0.1);
+    expect(Math.abs(result.carryYds - 226.27)).toBeLessThanOrEqual(0.1);
   });
 
   it("total distance is carry plus the M1 rollout placeholder, consistently", () => {
