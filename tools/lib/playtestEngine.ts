@@ -93,11 +93,39 @@ export interface HazardContext {
   pin: Point2;
 }
 
+// A carry that lands safely on fairway can still roll forward into water
+// just past it -- a real gap found empirically (Part B's "Lay of the
+// Land" kept finding water under "hazard-aware" club selection because
+// the check only ever looked at the carry landing point). Rollout itself
+// lives in @mulligan/game's resolver and isn't worth coupling this tool
+// to; a flat margin approximating a typical fairway drive's rollout (see
+// CLAUDE.md's M2b rollout table -- driver-on-fairway is ~20yd) is close
+// enough for "would a competent player risk this club here." Scoped to
+// water only, and only when the carry itself lands somewhere with real
+// rollout (fairway/tee/green) -- bunkers and rough barely roll at all in
+// the real model (M2b's rolloutMultiplier is ~0.1-0.3 there), so applying
+// the same margin to them made hole 1's already-verified bunker read as
+// reachable-by-rollout when it never was, and drove driver out of the bag
+// there for no real reason.
+const HAZARD_ROLLOUT_MARGIN_YDS = 25;
+
 function landsInHazard(ctx: HazardContext, carryYds: number): boolean {
   const heading = headingToward(ctx.pos, ctx.pin);
-  const landing: Point2 = { x: ctx.pos.x + carryYds * Math.sin(heading), y: ctx.pos.y + carryYds * Math.cos(heading) };
-  const s = surfaceAt(ctx.hole, landing);
-  return s === "bunker" || s === "water" || s === "out";
+  const carryLanding: Point2 = { x: ctx.pos.x + carryYds * Math.sin(heading), y: ctx.pos.y + carryYds * Math.cos(heading) };
+  const carrySurface = surfaceAt(ctx.hole, carryLanding);
+  if (carrySurface === "bunker" || carrySurface === "water" || carrySurface === "out") return true;
+
+  if (carrySurface === "fairway" || carrySurface === "tee" || carrySurface === "green") {
+    // Sample the whole rollout range, not just its far endpoint -- a
+    // hazard band narrower than the margin sits entirely between the two
+    // and a single-point check at carryYds+margin jumps clean over it.
+    for (let step = 1; step <= 5; step++) {
+      const d = carryYds + (HAZARD_ROLLOUT_MARGIN_YDS * step) / 5;
+      const p: Point2 = { x: ctx.pos.x + d * Math.sin(heading), y: ctx.pos.y + d * Math.cos(heading) };
+      if (surfaceAt(ctx.hole, p) === "water") return true;
+    }
+  }
+  return false;
 }
 
 export function chooseClub(surface: SurfaceType, distanceYds: number, hazardCtx?: HazardContext): ClubChoice {
