@@ -622,6 +622,40 @@ input[type="range"]:disabled {
   cursor: default;
 }
 
+/* ---------- Preferences (Part C): handedness / units / skill profile rows in Settings ---------- */
+.pref-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.pref-row-stacked {
+  flex-direction: column;
+  align-items: stretch;
+}
+.pref-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.pref-sublabel {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sub);
+}
+.pref-inline-toggle {
+  flex: 0 0 auto;
+  width: auto;
+  margin-bottom: 0;
+}
+.pref-inline-toggle .mode-tab {
+  padding: 8px 14px;
+  min-height: 36px;
+}
+.pref-row-stacked .mode-toggle {
+  margin-top: 6px;
+}
+
 /* Device source + aim zeroing -- settings-sheet only now, touched once at the start of a session. */
 .device-panel {
   background: var(--chipbg);
@@ -1346,6 +1380,70 @@ input[type="range"]:disabled {
   border-color: color-mix(in srgb, var(--cardstock-ink) 30%, transparent);
   color: var(--cardstock-ink);
   background: transparent;
+}
+
+/* ---------- Bag editor (Part C): same cardstock sheet shell as session review ---------- */
+.bag-editor-hint {
+  font-size: 12px;
+  line-height: 1.5;
+  color: color-mix(in srgb, var(--cardstock-ink) 70%, transparent);
+  margin: 4px 0 14px;
+}
+.bag-editor-list {
+  display: flex;
+  flex-direction: column;
+}
+.bag-editor-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--cardstock-ink) 15%, transparent);
+}
+.bag-editor-row-disabled {
+  opacity: 0.5;
+}
+.bag-editor-toggle {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  cursor: pointer;
+}
+.bag-editor-club-name {
+  font-size: 13.5px;
+  font-weight: 700;
+}
+.bag-editor-carry,
+.bag-editor-reorder {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.bag-editor-carry-value {
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  width: 34px;
+  text-align: center;
+  color: color-mix(in srgb, var(--cardstock-ink) 75%, transparent);
+}
+.bag-editor-step {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--cardstock-ink) 25%, transparent);
+  background: color-mix(in srgb, var(--cardstock-ink) 8%, transparent);
+  color: var(--cardstock-ink);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.bag-editor-step:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 /* Short phones (SE-class, or a phone with the keyboard/browser chrome

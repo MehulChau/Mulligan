@@ -93,6 +93,21 @@ describe("SimulatedShotSource", () => {
     expect(a.hit("lw", 1)).toEqual(b.hit("lw", 1, 1));
   });
 
+  it("setDispersion takes effect on the next hit(), not the current dispersion instance retroactively", async () => {
+    const noisy: typeof PERFECT_DISPERSION = { ...PERFECT_DISPERSION, startLineSigmaDeg: 50 };
+    const source = new SimulatedShotSource({ dispersion: PERFECT_DISPERSION, seed: 1, fidelity: "full" });
+    await source.start();
+
+    const beforeSwitch = source.hit("driver", 1);
+    expect(beforeSwitch.startLineDeg).toBe(0); // PERFECT_DISPERSION -- deterministic, no scatter
+
+    source.setDispersion(noisy);
+    const a = new SimulatedShotSource({ dispersion: noisy, seed: 1, fidelity: "full" });
+    await a.start();
+    a.hit("driver", 1); // burn the same rng draw the first source already consumed above
+    expect(source.hit("driver", 2)).toEqual(a.hit("driver", 2));
+  });
+
   it("notifies subscribers on hit", async () => {
     const source = new SimulatedShotSource();
     await source.start();

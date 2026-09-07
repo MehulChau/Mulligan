@@ -1,15 +1,18 @@
+import { formatDistance, type UnitSystem } from "../preferences";
+
 export interface SwingFractionSliderProps {
   fraction: number;
   expectedCarryYds: number;
   disabled?: boolean;
   onChange: (fraction: number) => void;
+  unit: UnitSystem;
 }
 
 const MIN_PCT = 30;
 const MAX_PCT = 100;
 const STEP_PCT = 5;
 
-export function SwingFractionSlider({ fraction, expectedCarryYds, disabled, onChange }: SwingFractionSliderProps) {
+export function SwingFractionSlider({ fraction, expectedCarryYds, disabled, onChange, unit }: SwingFractionSliderProps) {
   const pct = Math.round(fraction * 100);
 
   return (
@@ -17,7 +20,7 @@ export function SwingFractionSlider({ fraction, expectedCarryYds, disabled, onCh
       <label>
         Swing{" "}
         <output>
-          {pct}% · ~{Math.round(expectedCarryYds)} yds
+          {pct}% · ~{formatDistance(expectedCarryYds, unit)}
         </output>
       </label>
       <input

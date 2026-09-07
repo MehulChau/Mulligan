@@ -1,4 +1,5 @@
 import type { PuttResult } from "@mulligan/game";
+import { formatShortDistance, type UnitSystem } from "../preferences";
 
 export interface PuttingPanelProps {
   puttDistanceYds: number;
@@ -6,24 +7,19 @@ export interface PuttingPanelProps {
   lastPuttResult: PuttResult | null;
   disabled: boolean;
   onPutt: () => void;
+  unit: UnitSystem;
 }
 
-function formatDistance(yds: number): string {
-  const feet = yds * 3;
-  if (feet < 1) return "a tap-in";
-  return `${feet.toFixed(feet < 10 ? 1 : 0)} ft`;
-}
-
-export function PuttingPanel({ puttDistanceYds, puttAttempts, lastPuttResult, disabled, onPutt }: PuttingPanelProps) {
+export function PuttingPanel({ puttDistanceYds, puttAttempts, lastPuttResult, disabled, onPutt, unit }: PuttingPanelProps) {
   return (
     <div className="controls putting-panel">
       <div className="putting-distance">
-        <b>{formatDistance(puttDistanceYds)}</b>
+        <b>{formatShortDistance(puttDistanceYds, unit)}</b>
         <span>to the hole{puttAttempts > 0 ? ` · putt ${puttAttempts + 1}` : ""}</span>
       </div>
 
       {lastPuttResult && !lastPuttResult.holed && (
-        <div className="putting-feedback">Missed — {formatDistance(lastPuttResult.distanceAfter)} left</div>
+        <div className="putting-feedback">Missed — {formatShortDistance(lastPuttResult.distanceAfter, unit)} left</div>
       )}
 
       <div className="hitrow">

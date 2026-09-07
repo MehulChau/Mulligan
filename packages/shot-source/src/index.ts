@@ -23,6 +23,9 @@ export type { DispersionParams } from "./dispersion";
 export { DEFAULT_DISPERSION, PERFECT_DISPERSION, sampleStrikeQuality, simulateShot } from "./dispersion";
 export { mulberry32, gaussian } from "./rng";
 
+export type { SkillProfile, SkillProfileId } from "./skillProfiles";
+export { SKILL_PROFILES, findSkillProfile, dispersionForSkillProfile } from "./skillProfiles";
+
 export type { ShotSource } from "./sources/ShotSource";
 export { BaseShotSource } from "./sources/ShotSource";
 export { ManualShotSource } from "./sources/ManualShotSource";

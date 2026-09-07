@@ -10,6 +10,7 @@ export interface ScorecardSummaryProps {
   /** "Next hole" mid-round, "Replay hole" from hole-select practice -- App.tsx decides which this hole needs. */
   continueLabel: string;
   onContinue: () => void;
+  leftHanded?: boolean;
 }
 
 function scoreToParText(strokes: number, par: number): string {
@@ -24,7 +25,7 @@ function scoreToParText(strokes: number, par: number): string {
  * idea as the ghost traces on the live hole, just for the whole round at
  * once.
  */
-export function ScorecardSummary({ hole, breakdown, paths, restSpots, continueLabel, onContinue }: ScorecardSummaryProps) {
+export function ScorecardSummary({ hole, breakdown, paths, restSpots, continueLabel, onContinue, leftHanded }: ScorecardSummaryProps) {
   const topar = scoreToParText(breakdown.totalStrokes, breakdown.par);
   // breakdown.label is only a distinct word ("birdie", "double bogey", ...)
   // inside the named range around par -- outside it, scoreToParLabel falls
@@ -58,7 +59,7 @@ export function ScorecardSummary({ hole, breakdown, paths, restSpots, continueLa
           <span className="scorecard-topar">{topar}</span>
         </div>
         {hasNamedLabel && <div className="scorecard-label">{breakdown.label}</div>}
-        <MiniHoleTrace hole={hole} paths={paths} restSpots={restSpots} />
+        <MiniHoleTrace hole={hole} paths={paths} restSpots={restSpots} leftHanded={leftHanded} />
         <div className="scorecard-breakdown">
           {breakdown.strokesToGreen} to the green · {breakdown.putts} putt{breakdown.putts === 1 ? "" : "s"} · par {breakdown.par}
         </div>

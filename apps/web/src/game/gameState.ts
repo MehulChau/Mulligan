@@ -12,7 +12,6 @@ import {
   type Point2,
 } from "@mulligan/game";
 import {
-  CLUBS,
   FULL_SWING_FRACTION,
   findClub,
   type ClubId,
@@ -22,6 +21,7 @@ import {
   type RawShotEvent,
   type ShotEvent,
 } from "@mulligan/shot-source";
+import { defaultBag, enabledClubsInBagOrder, isClubEnabled, type BagEntry } from "../bag";
 
 export interface ShotHistoryEntry {
   clubId: ClubId;
@@ -124,6 +124,15 @@ export interface GameState {
   lastPenalty: PenaltyKind | null;
 
   device: DeviceSessionState;
+  /**
+   * Which clubs are offered and in what order (Part C bag editing) --
+   * carried forward across RESET/GO_TO_HOLE/NEW_ROUND the same way
+   * `device` is, since it's a player preference, not per-round state.
+   * Auto-club-switching (see SHOT_SETTLED below) picks only from this
+   * list's enabled entries, so a disabled club can never get auto-selected
+   * just because it happens to fit a lie.
+   */
+  bag: BagEntry[];
 }
 
 export type GameAction =
@@ -147,7 +156,8 @@ export type GameAction =
   | { type: "AIM_ZERO_SAMPLE_RECEIVED"; raw: RawShotEvent }
   | { type: "CONFIRM_AIM_ZERO" }
   | { type: "CANCEL_AIM_ZERO_CALIBRATION" }
-  | { type: "RESUME_ROUND"; state: GameState };
+  | { type: "RESUME_ROUND"; state: GameState }
+  | { type: "SET_BAG"; bag: BagEntry[] };
 
 /** An amateur golfer picks up after this many putts on one green; nothing loops forever. */
 const MAX_PUTTS = 5;
@@ -217,9 +227,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         strokeCount += resolution.strokePenalty;
         const ballPos = resolution.nextBallPos;
         const lieAfterDrop = surfaceAt(state.hole, ballPos);
-        const selectedClubId = clubAvailability(lieAfterDrop, state.selectedClubId).available
-          ? state.selectedClubId
-          : firstAvailableClub(lieAfterDrop, CLUBS);
+        const selectedClubId =
+          clubAvailability(lieAfterDrop, state.selectedClubId).available && isClubEnabled(state.bag, state.selectedClubId)
+            ? state.selectedClubId
+            : firstAvailableClub(lieAfterDrop, enabledClubsInBagOrder(state.bag));
 
         return {
           ...state,
@@ -248,9 +259,10 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         };
       }
 
-      const selectedClubId = clubAvailability(restSurface, state.selectedClubId).available
-        ? state.selectedClubId
-        : firstAvailableClub(restSurface, CLUBS);
+      const selectedClubId =
+        clubAvailability(restSurface, state.selectedClubId).available && isClubEnabled(state.bag, state.selectedClubId)
+          ? state.selectedClubId
+          : firstAvailableClub(restSurface, enabledClubsInBagOrder(state.bag));
 
       return {
         ...state,
@@ -292,6 +304,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         courseHoleIndex: state.courseHoleIndex,
         roundScores: state.roundScores,
         device: state.device,
+        bag: state.bag,
       };
 
     case "GO_TO_HOLE":
@@ -303,6 +316,7 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
         courseHoleIndex: action.index,
         roundScores: state.roundScores,
         device: state.device,
+        bag: state.bag,
       };
 
     case "NEW_ROUND":
@@ -311,6 +325,21 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
       return {
         ...createInitialState(action.hole, action.clubId, state.device.address),
         device: state.device,
+        bag: state.bag,
+      };
+
+    case "SET_BAG":
+      // A club disabled mid-round while it happens to be selected would
+      // otherwise leave a disabled club sitting in the picker's selection --
+      // SHOT_SETTLED already re-checks bag-enabled status on the NEXT shot,
+      // but that's one shot too late for the club chip UI to be honest
+      // right now, so re-derive the selection immediately here too.
+      return {
+        ...state,
+        bag: action.bag,
+        selectedClubId: isClubEnabled(action.bag, state.selectedClubId)
+          ? state.selectedClubId
+          : firstAvailableClub(surfaceAt(state.hole, state.ballPos), enabledClubsInBagOrder(action.bag)),
       };
 
     case "SET_DEVICE_ADDRESS":
@@ -360,7 +389,12 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
   }
 }
 
-export function createInitialState(hole: Hole, initialClubId: ClubId, initialDeviceAddress: string = DEFAULT_DEVICE_ADDRESS): GameState {
+export function createInitialState(
+  hole: Hole,
+  initialClubId: ClubId,
+  initialDeviceAddress: string = DEFAULT_DEVICE_ADDRESS,
+  initialBag: BagEntry[] = defaultBag(),
+): GameState {
   return {
     hole,
     courseHoleIndex: 0,
@@ -384,5 +418,6 @@ export function createInitialState(hole: Hole, initialClubId: ClubId, initialDev
     lastPenalty: null,
 
     device: createInitialDeviceState(initialDeviceAddress),
+    bag: initialBag,
   };
 }

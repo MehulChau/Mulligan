@@ -7,6 +7,7 @@ export interface MiniHoleTraceProps {
   hole: Hole;
   paths: Point2[][];
   restSpots: Point2[];
+  leftHanded?: boolean;
 }
 
 /**
@@ -16,7 +17,7 @@ export interface MiniHoleTraceProps {
  * this is a thumbnail, and that texture work only pays for itself at full
  * canvas size.
  */
-export function MiniHoleTrace({ hole, paths, restSpots }: MiniHoleTraceProps) {
+export function MiniHoleTrace({ hole, paths, restSpots, leftHanded = false }: MiniHoleTraceProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -31,7 +32,7 @@ export function MiniHoleTrace({ hole, paths, restSpots }: MiniHoleTraceProps) {
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const camera = computeCamera(hole.bounds, w, h, 10);
+    const camera = computeCamera(hole.bounds, w, h, 10, leftHanded);
 
     ctx.fillStyle = CANVAS_BG;
     ctx.fillRect(0, 0, w, h);
@@ -75,7 +76,7 @@ export function MiniHoleTrace({ hole, paths, restSpots }: MiniHoleTraceProps) {
     ctx.beginPath();
     ctx.arc(pin.x, pin.y, 2.6, 0, Math.PI * 2);
     ctx.fill();
-  }, [hole, paths, restSpots]);
+  }, [hole, paths, restSpots, leftHanded]);
 
   return <canvas ref={canvasRef} className="mini-hole-trace" />;
 }

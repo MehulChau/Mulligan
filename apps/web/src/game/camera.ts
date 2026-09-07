@@ -10,16 +10,33 @@ export interface Bounds {
 /**
  * One static fitted view — no pan/zoom in M1. Fits `bounds` into the
  * viewport preserving aspect ratio, pin at the top, tee at the bottom.
- * yardsToScreen/screenToYards are the ONLY place this transform happens.
+ * yardsToScreen/screenToYards are the ONLY place this transform happens --
+ * which is also why left-handed mode (Part C) is a one-field addition here
+ * rather than a change scattered across every draw call: `mirrorX` flips
+ * the x-axis at this single seam, and every caller (surfaces, pin, ball,
+ * previous shots, drag-to-aim's screenToYards) gets it for free.
  */
 export interface Camera {
   scale: number; // screen px per yard
   offsetX: number;
   offsetY: number;
+  mirrorX: boolean;
 }
 
-export function computeCamera(bounds: Bounds, viewportWidth: number, viewportHeight: number, marginPx = 28): Camera {
-  const holeWidth = bounds.maxX - bounds.minX;
+export function computeCamera(
+  bounds: Bounds,
+  viewportWidth: number,
+  viewportHeight: number,
+  marginPx = 28,
+  mirrorX = false,
+): Camera {
+  // Mirroring flips which physical x is "left" on screen -- computed here
+  // (not by negating x in yardsToScreen alone) so the fitted extent and
+  // centering are correct for the mirrored layout too, not just individual
+  // point positions.
+  const effMinX = mirrorX ? -bounds.maxX : bounds.minX;
+  const effMaxX = mirrorX ? -bounds.minX : bounds.maxX;
+  const holeWidth = effMaxX - effMinX;
   const holeHeight = bounds.maxY - bounds.minY;
   const usableW = Math.max(1, viewportWidth - marginPx * 2);
   const usableH = Math.max(1, viewportHeight - marginPx * 2);
@@ -32,8 +49,9 @@ export function computeCamera(bounds: Bounds, viewportWidth: number, viewportHei
 
   return {
     scale,
-    offsetX: extraX - bounds.minX * scale,
+    offsetX: extraX - effMinX * scale,
     offsetY: extraY + bounds.maxY * scale,
+    mirrorX,
   };
 }
 
@@ -57,15 +75,17 @@ export function effectiveBounds(bounds: Bounds, points: Point2[], paddingYds = 8
 }
 
 export function yardsToScreen(camera: Camera, p: Point2): Point2 {
+  const x = camera.mirrorX ? -p.x : p.x;
   return {
-    x: camera.offsetX + p.x * camera.scale,
+    x: camera.offsetX + x * camera.scale,
     y: camera.offsetY - p.y * camera.scale,
   };
 }
 
 export function screenToYards(camera: Camera, p: Point2): Point2 {
+  const x = (p.x - camera.offsetX) / camera.scale;
   return {
-    x: (p.x - camera.offsetX) / camera.scale,
+    x: camera.mirrorX ? -x : x,
     y: (camera.offsetY - p.y) / camera.scale,
   };
 }

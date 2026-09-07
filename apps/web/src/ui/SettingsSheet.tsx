@@ -1,4 +1,7 @@
+import type { SkillProfileId } from "@mulligan/shot-source";
+import { SKILL_PROFILES } from "@mulligan/shot-source";
 import { useState, type ChangeEvent, type MouseEvent } from "react";
+import type { Handedness, UnitSystem } from "../preferences";
 import type { DeviceSessionState, ShotSourceMode } from "../game/gameState";
 import { useFocusTrap } from "../useFocusTrap";
 import { AimZeroPanel } from "./AimZeroPanel";
@@ -21,6 +24,13 @@ export interface SettingsSheetProps {
   onExportSession: () => void;
   onImportSessionFile: (e: ChangeEvent<HTMLInputElement>) => void;
   onOpenSessionReview: () => void;
+  handedness: Handedness;
+  onHandednessChange: (h: Handedness) => void;
+  unit: UnitSystem;
+  onUnitChange: (u: UnitSystem) => void;
+  skillProfileId: SkillProfileId;
+  onSkillProfileChange: (id: SkillProfileId) => void;
+  onOpenBagEditor: () => void;
 }
 
 /**
@@ -45,6 +55,13 @@ export function SettingsSheet({
   onExportSession,
   onImportSessionFile,
   onOpenSessionReview,
+  handedness,
+  onHandednessChange,
+  unit,
+  onUnitChange,
+  skillProfileId,
+  onSkillProfileChange,
+  onOpenBagEditor,
 }: SettingsSheetProps) {
   const [explainerOpen, setExplainerOpen] = useState(false);
   const sheetRef = useFocusTrap<HTMLDivElement>(open, onClose);
@@ -86,6 +103,55 @@ export function SettingsSheet({
             onCancel={onAimZeroCancel}
           />
         )}
+
+        <div className="sheet-section-label">Preferences</div>
+        <div className="pref-row">
+          <span className="pref-label">Handedness</span>
+          <div className="mode-toggle pref-inline-toggle" role="group" aria-label="Handedness">
+            <button type="button" className={"mode-tab" + (handedness === "right" ? " on" : "")} onClick={() => onHandednessChange("right")}>
+              Right
+            </button>
+            <button type="button" className={"mode-tab" + (handedness === "left" ? " on" : "")} onClick={() => onHandednessChange("left")}>
+              Left
+            </button>
+          </div>
+        </div>
+        <div className="pref-row">
+          <span className="pref-label">Units</span>
+          <div className="mode-toggle pref-inline-toggle" role="group" aria-label="Units">
+            <button type="button" className={"mode-tab" + (unit === "imperial" ? " on" : "")} onClick={() => onUnitChange("imperial")}>
+              Yards/ft
+            </button>
+            <button type="button" className={"mode-tab" + (unit === "metric" ? " on" : "")} onClick={() => onUnitChange("metric")}>
+              Meters
+            </button>
+          </div>
+        </div>
+
+        {sourceMode === "simulated" && (
+          <div className="pref-row pref-row-stacked">
+            <span className="pref-label">
+              Skill profile <span className="pref-sublabel">— simulated shots only, never a real device</span>
+            </span>
+            <div className="mode-toggle">
+              {SKILL_PROFILES.map((p) => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className={"mode-tab" + (skillProfileId === p.id ? " on" : "")}
+                  onClick={() => onSkillProfileChange(p.id)}
+                  title={p.description}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <button type="button" className="device-action device-action-quiet settings-explainer-toggle" onClick={onOpenBagEditor}>
+          Edit bag
+        </button>
 
         <div className="sheet-section-label">About the numbers</div>
         <button

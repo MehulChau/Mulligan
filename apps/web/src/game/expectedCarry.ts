@@ -70,17 +70,25 @@ const cache = new Map<string, number>();
  * this swing fraction -- NOT the noiseless preset (which is optimistic; the
  * median simulated drive carries noticeably less than the preset's exact
  * 224.4 for driver). `swingFraction` defaults to a full swing; only wedges
- * ever get a fraction below that from the UI.
+ * ever get a fraction below that from the UI. `carryAdjustPct` (Part C bag
+ * editing, default 0) is folded in so the HUD's "~N yds" stays honest about
+ * a player's per-club correction rather than always showing the generic
+ * CLUBS-preset number. Deliberately still keyed on DEFAULT_DISPERSION, not
+ * the player's chosen skill profile -- the noise model is close enough to
+ * zero-mean that skill profile shouldn't shift the median much, and
+ * threading profile identity through this cache for a marginal HUD
+ * accuracy gain wasn't worth the added surface here.
  */
-export function expectedCarryYds(clubId: ClubId, swingFraction: number = FULL_SWING_FRACTION): number {
+export function expectedCarryYds(clubId: ClubId, swingFraction: number = FULL_SWING_FRACTION, carryAdjustPct = 0): number {
   const fraction = roundToFractionStep(clampSwingFraction(swingFraction));
-  const key = `${clubId}:${fraction.toFixed(2)}`;
+  const key = `${clubId}:${fraction.toFixed(2)}:${carryAdjustPct}`;
 
   const cached = cache.get(key);
   if (cached !== undefined) return cached;
 
-  const baseClub = findClub(clubId);
-  const club = fraction === FULL_SWING_FRACTION ? baseClub : scaleClubForSwing(baseClub, fraction);
+  const presetClub = findClub(clubId);
+  const adjustedClub = carryAdjustPct === 0 ? presetClub : { ...presetClub, ballSpeedMph: presetClub.ballSpeedMph * (1 + carryAdjustPct / 100) };
+  const club = fraction === FULL_SWING_FRACTION ? adjustedClub : scaleClubForSwing(adjustedClub, fraction);
   const dispersion =
     fraction === FULL_SWING_FRACTION ? DEFAULT_DISPERSION : scaleDispersionForSwing(DEFAULT_DISPERSION, fraction);
 

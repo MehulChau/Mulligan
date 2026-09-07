@@ -3,6 +3,7 @@ import type { Hole, PenaltyKind, PuttResult, Point2 } from "@mulligan/game";
 import { idbDelete, idbGet, idbSet } from "./idb";
 import type { DeviceSessionState, GamePhase, GameState, ManualEntryValues, ShotHistoryEntry, ShotSourceMode } from "../game/gameState";
 import { createInitialState } from "../game/gameState";
+import type { BagEntry } from "../bag";
 
 const STORE = "round";
 const KEY = "current";
@@ -172,10 +173,17 @@ export function isValidPersistedRoundState(v: unknown, courseLength: number): v 
   return true;
 }
 
-/** Rebuilds a full GameState from a validated record -- `hole` comes from `course`, everything transient resets to its normal boot default. */
-export function hydrateRoundState(persisted: PersistedRoundStateV1, course: readonly Hole[]): GameState {
+/**
+ * Rebuilds a full GameState from a validated record -- `hole` comes from
+ * `course`, everything transient resets to its normal boot default. `bag`
+ * isn't part of the persisted record at all (it's a localStorage player
+ * preference, same footing as handedness/units -- see bag.ts) and is
+ * passed in fresh from whatever the player's current bag setting is, not
+ * whatever it was when the round was saved.
+ */
+export function hydrateRoundState(persisted: PersistedRoundStateV1, course: readonly Hole[], bag: BagEntry[]): GameState {
   const hole = course[persisted.courseHoleIndex]!;
-  const base = createInitialState(hole, persisted.selectedClubId, persisted.device.address);
+  const base = createInitialState(hole, persisted.selectedClubId, persisted.device.address, bag);
   const device: DeviceSessionState = {
     ...base.device,
     address: persisted.device.address,

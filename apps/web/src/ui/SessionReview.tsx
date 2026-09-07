@@ -2,12 +2,14 @@ import { degToRad, metersToYards, mphToMps, rpmToRadPerSec, simulate } from "@mu
 import { findClub, type ShotLogEntry } from "@mulligan/shot-source";
 import { useEffect, useMemo, useRef } from "react";
 import { DispersionPlot, type DispersionPoint } from "../game/DispersionPlot";
+import { distanceValue, distanceUnitLabel, formatShortDistance, type UnitSystem } from "../preferences";
 import { useFocusTrap } from "../useFocusTrap";
 
 export interface SessionReviewProps {
   entries: ShotLogEntry[];
   onClose: () => void;
   onExport: () => void;
+  unit: UnitSystem;
 }
 
 interface ClubSummary {
@@ -70,7 +72,7 @@ function summarizeByClub(ballFlightEntries: { entry: ShotLogEntry; carryYds: num
  * visual language): per-club summary with a dispersion plot, then every
  * shot in order with its provenance.
  */
-export function SessionReview({ entries, onClose, onExport }: SessionReviewProps) {
+export function SessionReview({ entries, onClose, onExport, unit }: SessionReviewProps) {
   const panelRef = useFocusTrap<HTMLDivElement>(true, onClose);
   const summaryRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -117,7 +119,9 @@ export function SessionReview({ entries, onClose, onExport }: SessionReviewProps
                   <div className="session-club-info">
                     <div className="session-club-name">{c.clubName}</div>
                     <div className="session-club-stats">
-                      {c.count} shot{c.count === 1 ? "" : "s"} · median {Math.round(c.medianCarryYds)}yd · ±{Math.round(c.spreadYds / 2)}yd
+                      {c.count} shot{c.count === 1 ? "" : "s"} · median {distanceValue(c.medianCarryYds, unit)}
+                      {distanceUnitLabel(unit)} · ±{distanceValue(c.spreadYds / 2, unit)}
+                      {distanceUnitLabel(unit)}
                     </div>
                   </div>
                   <DispersionPlot points={c.points} />
@@ -132,11 +136,12 @@ export function SessionReview({ entries, onClose, onExport }: SessionReviewProps
                   <span className="session-shot-num">{entry.strokeNumber}</span>
                   {entry.isPutt ? (
                     <span className="session-shot-desc">
-                      Putt · {Math.round(entry.puttDistanceBeforeYds! * 3)}ft · {entry.holed ? "holed" : "missed"}
+                      Putt · {formatShortDistance(entry.puttDistanceBeforeYds!, unit)} · {entry.holed ? "holed" : "missed"}
                     </span>
                   ) : (
                     <span className="session-shot-desc">
-                      {findClub(entry.shot!.clubId).name} · {Math.round(carryByTimestamp.get(entry.timestamp) ?? 0)}yd
+                      {findClub(entry.shot!.clubId).name} · {distanceValue(carryByTimestamp.get(entry.timestamp) ?? 0, unit)}
+                      {distanceUnitLabel(unit)}
                       <span className={"prov " + entry.shot!.provenance.ballSpeed}>{Math.round(entry.shot!.ballSpeedMph)}mph</span>
                       <span className={"prov " + entry.shot!.provenance.launch}>{entry.shot!.launchDeg.toFixed(1)}°</span>
                     </span>

@@ -1,6 +1,7 @@
 import type { ClubProfile, Provenance, ShotEvent } from "@mulligan/shot-source";
 import { useEffect, useRef, useState } from "react";
 import { DUR_SLOW_MS } from "../motion";
+import { distanceUnitLabel, distanceValue, type UnitSystem } from "../preferences";
 
 export interface ShotReadoutData {
   key: string; // unique per shot (e.g. timestamp) -- restarts the count-up
@@ -16,6 +17,7 @@ export interface ShotReadoutData {
 export interface ShotReadoutProps {
   data: ShotReadoutData | null;
   skipAnimation: boolean;
+  unit: UnitSystem;
 }
 
 const READOUT_DURATION_MS = Math.min(800, DUR_SLOW_MS);
@@ -77,7 +79,7 @@ function ReadoutTile({ label, value, unit, provenance }: { label: string; value:
  * Before the first shot of a hole, this slot shows a one-line prompt
  * instead of sitting blank (Part 5's empty-state rule).
  */
-export function ShotReadout({ data, skipAnimation }: ShotReadoutProps) {
+export function ShotReadout({ data, skipAnimation, unit }: ShotReadoutProps) {
   const targets = data ? [data.carryYds, data.ballSpeedMph, data.launchDeg, data.spinRpm] : [0, 0, 0, 0];
   const [carry, ballSpeed, launch, spin] = useCountUp(targets, data?.key ?? "none", READOUT_DURATION_MS, skipAnimation || !data);
 
@@ -94,10 +96,12 @@ export function ShotReadout({ data, skipAnimation }: ShotReadoutProps) {
       <div className="readout-headline">
         <span className="readout-club">{data.club.name}</span>
         <span className="readout-carry">
-          {Math.round(carry!)}
-          <span className="readout-carry-unit">yds carry</span>
+          {distanceValue(carry!, unit)}
+          <span className="readout-carry-unit">{distanceUnitLabel(unit)} carry</span>
         </span>
-        <span className="readout-total">{Math.round(data.totalYds)} total</span>
+        <span className="readout-total">
+          {distanceValue(data.totalYds, unit)} total
+        </span>
       </div>
       <div className="readout-tiles">
         <ReadoutTile label={FIELD_LABEL.ballSpeed} value={Math.round(ballSpeed!).toString()} unit="mph" provenance={data.provenance.ballSpeed} />

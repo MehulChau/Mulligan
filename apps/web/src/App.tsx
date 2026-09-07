@@ -1,12 +1,12 @@
 import { degToRad } from "@mulligan/physics";
 import { COURSE, headingToward, isPenaltySurface, resolvePutt, resolveShot, summarizeScore, surfaceAt } from "@mulligan/game";
 import {
-  CLUBS,
   FULL_SWING_FRACTION,
   ManualShotSource,
   NetworkShotSource,
   ShotLog,
   SimulatedShotSource,
+  dispersionForSkillProfile,
   enrichShot,
   exportSession,
   findClub,
@@ -19,14 +19,17 @@ import {
   type RawShotEvent,
 } from "@mulligan/shot-source";
 import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } from "react";
+import { carryAdjustForClub, enabledClubsInBagOrder, readStoredBag, saveBag, type BagEntry } from "./bag";
 import { ErrorBoundary } from "./ErrorBoundary";
 import { expectedCarryYds } from "./game/expectedCarry";
 import { DEFAULT_DEVICE_ADDRESS, createInitialState, gameReducer, type ShotHistoryEntry } from "./game/gameState";
 import { HoleCanvas } from "./game/HoleCanvas";
 import { SURFACE_LABEL } from "./game/surfaceLabels";
 import { usePrefersReducedMotion } from "./motion";
+import { distanceValue, formatDistance, formatShortDistance, usePreferences } from "./preferences";
 import { useWakeLock } from "./useWakeLock";
 import { clearPersistedRoundState, hydrateRoundState, loadPersistedRound, saveRoundState, type PersistedRoundStateV1 } from "./persistence/roundStorage";
+import { BagEditor } from "./ui/BagEditor";
 import { ClubPicker } from "./ui/ClubPicker";
 import { CourseScorecard } from "./ui/CourseScorecard";
 import { DistanceHero } from "./ui/DistanceHero";
@@ -94,8 +97,10 @@ function connectionDotClass(
 }
 
 export default function App() {
+  const { handedness, unit, skillProfileId, setHandedness, setUnit, setSkillProfileId } = usePreferences();
+
   const [state, dispatch] = useReducer(gameReducer, undefined, () =>
-    createInitialState(COURSE[0]!, INITIAL_CLUB, readStoredDeviceAddress()),
+    createInitialState(COURSE[0]!, INITIAL_CLUB, readStoredDeviceAddress(), readStoredBag()),
   );
 
   // NetworkShotSource's onShot/onConnectionStateChange/etc callbacks are
@@ -126,6 +131,7 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [holeSelectOpen, setHoleSelectOpen] = useState(false);
   const [sessionReviewOpen, setSessionReviewOpen] = useState(false);
+  const [bagEditorOpen, setBagEditorOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => !readOnboardingSeen());
   const [resumeChoicePending, setResumeChoicePending] = useState<PersistedRoundStateV1 | null>(null);
   // Gates the continuous-save effect below until the boot-time resume/
@@ -181,7 +187,7 @@ export default function App() {
 
   function handleResumeRound() {
     if (!resumeChoicePending) return;
-    dispatch({ type: "RESUME_ROUND", state: hydrateRoundState(resumeChoicePending, COURSE) });
+    dispatch({ type: "RESUME_ROUND", state: hydrateRoundState(resumeChoicePending, COURSE, state.bag) });
     setResumeChoicePending(null);
     readyToPersistRef.current = true;
   }
@@ -193,7 +199,7 @@ export default function App() {
   }
 
   useEffect(() => {
-    const simulated = new SimulatedShotSource();
+    const simulated = new SimulatedShotSource({ dispersion: dispersionForSkillProfile(skillProfileId) });
     const manual = new ManualShotSource();
     simulatedRef.current = simulated;
     manualRef.current = manual;
@@ -204,7 +210,16 @@ export default function App() {
       manual.stop();
       networkRef.current?.stop();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- skillProfileId's initial value only; changes handled by the effect below via setDispersion, not by recreating the source.
   }, []);
+
+  // Skill profile (Part C) only ever reaches SimulatedShotSource -- see
+  // preferences.tsx's doc comment on skillProfileId for why that's a
+  // structural guarantee, not just a convention, for keeping a real
+  // device's numbers unadjusted.
+  useEffect(() => {
+    simulatedRef.current?.setDispersion(dispersionForSkillProfile(skillProfileId));
+  }, [skillProfileId]);
 
   // The device address field is a session convenience, not game state that
   // needs to be pure/replayable -- persisted directly here rather than
@@ -217,6 +232,18 @@ export default function App() {
       // field doesn't remember itself next launch.
     }
   }, [state.device.address]);
+
+  // Bag (Part C) lives in reducer state (so auto-club-switching can see it
+  // without extra plumbing -- see gameState.ts's SET_BAG/SHOT_SETTLED) but
+  // persists the same way device address does: a plain localStorage
+  // mirror, saved whenever it changes.
+  useEffect(() => {
+    saveBag(state.bag);
+  }, [state.bag]);
+
+  function handleBagChange(bag: BagEntry[]): void {
+    dispatch({ type: "SET_BAG", bag });
+  }
 
   const distanceToPinYds = useMemo(
     () => Math.hypot(state.hole.pin.x - state.ballPos.x, state.hole.pin.y - state.ballPos.y),
@@ -231,11 +258,12 @@ export default function App() {
   // swing fraction only applies to a simulated wedge -- everything else
   // always swings full.
   const effectiveSwingFraction = state.sourceMode === "simulated" && wedgeSelected ? state.swingFraction : FULL_SWING_FRACTION;
+  const selectedCarryAdjustPct = carryAdjustForClub(state.bag, state.selectedClubId);
   // expectedCarryYds computes lazily on first request per (club, fraction)
   // and caches the result (see game/expectedCarry.ts) -- cheap enough on
   // every render that no memoization is needed here; only the first tap on
   // a given club/fraction does real work.
-  const clubExpectedCarry = expectedCarryYds(state.selectedClubId, effectiveSwingFraction);
+  const clubExpectedCarry = expectedCarryYds(state.selectedClubId, effectiveSwingFraction, selectedCarryAdjustPct);
 
   const previousPaths = useMemo(() => state.shotHistory.map((entry) => entry.result.path2d), [state.shotHistory]);
   const previousRestSpots = useMemo(() => state.shotHistory.map((entry) => entry.result.rest), [state.shotHistory]);
@@ -263,19 +291,19 @@ export default function App() {
   // when it should without a separate "shot just happened" flag.
   const roundNarration = useMemo(() => {
     const holeInfo = `Hole ${state.courseHoleIndex + 1} of ${COURSE.length}, ${state.hole.name}, par ${state.hole.par}.`;
+    const unitWord = unit === "metric" ? "meters" : "yards";
     if (state.phase === "putting") {
-      const feet = Math.round(state.puttDistanceYds * 3);
-      return `${holeInfo} Putting, ${feet} feet to the hole. Putt ${state.puttAttempts + 1}.`;
+      return `${holeInfo} Putting, ${formatShortDistance(state.puttDistanceYds, unit)} to the hole. Putt ${state.puttAttempts + 1}.`;
     }
     if (state.phase === "holed") {
       return `${holeInfo} Hole complete.`;
     }
-    const shotInfo = `Shot ${state.strokeCount + 1}. ${Math.round(distanceToPinYds)} yards to the pin, ${SURFACE_LABEL[currentSurface]}.`;
+    const shotInfo = `Shot ${state.strokeCount + 1}. ${distanceValue(distanceToPinYds, unit)} ${unitWord} to the pin, ${SURFACE_LABEL[currentSurface]}.`;
     const lastShotInfo = readoutData
-      ? ` Last shot: ${readoutData.club.name}, carried ${Math.round(readoutData.carryYds)} yards, ${Math.round(readoutData.totalYds)} total.`
+      ? ` Last shot: ${readoutData.club.name}, carried ${distanceValue(readoutData.carryYds, unit)} ${unitWord}, ${distanceValue(readoutData.totalYds, unit)} total.`
       : "";
     return `${holeInfo} ${shotInfo}${lastShotInfo}`;
-  }, [state.courseHoleIndex, state.hole, state.phase, state.strokeCount, state.puttDistanceYds, state.puttAttempts, distanceToPinYds, currentSurface, readoutData]);
+  }, [state.courseHoleIndex, state.hole, state.phase, state.strokeCount, state.puttDistanceYds, state.puttAttempts, distanceToPinYds, currentSurface, readoutData, unit]);
 
   // Shared tail for every shot regardless of where the RawShotEvent came
   // from (manual sliders, the simulator, or a real device push) -- reads
@@ -323,7 +351,7 @@ export default function App() {
       } else if (state.sourceMode === "simulated") {
         const simulated = simulatedRef.current;
         if (!simulated) return;
-        const raw = simulated.hit(state.selectedClubId, Date.now(), effectiveSwingFraction);
+        const raw = simulated.hit(state.selectedClubId, Date.now(), effectiveSwingFraction, selectedCarryAdjustPct);
         resolveAndPlayShot(
           raw,
           state.selectedClubId,
@@ -524,7 +552,7 @@ export default function App() {
 
       <ErrorBoundary>
       {state.phase !== "holed" && (
-        <DistanceHero distanceToPinYds={distanceToPinYds} surface={currentSurface} lastPenalty={state.lastPenalty} />
+        <DistanceHero distanceToPinYds={distanceToPinYds} surface={currentSurface} lastPenalty={state.lastPenalty} unit={unit} />
       )}
 
       <div className="canvas-wrap">
@@ -541,6 +569,8 @@ export default function App() {
           skipAnimation={state.skipAnimation}
           reducedMotion={reducedMotion}
           onShotSettled={() => dispatch({ type: "SHOT_SETTLED" })}
+          leftHanded={handedness === "left"}
+          unit={unit}
         />
       </div>
 
@@ -564,11 +594,12 @@ export default function App() {
             restSpots={previousRestSpots}
             continueLabel="Next hole"
             onContinue={handleNextHole}
+            leftHanded={handedness === "left"}
           />
         )
       ) : (
         <>
-          {state.phase === "shot" && <ShotReadout data={readoutData} skipAnimation={state.skipAnimation || reducedMotion} />}
+          {state.phase === "shot" && <ShotReadout data={readoutData} skipAnimation={state.skipAnimation || reducedMotion} unit={unit} />}
 
           {state.phase === "shot" && (
             <div className="controls">
@@ -578,6 +609,7 @@ export default function App() {
                   expectedCarryYds={clubExpectedCarry}
                   disabled={controlsDisabled}
                   onChange={(fraction) => dispatch({ type: "SET_SWING_FRACTION", fraction })}
+                  unit={unit}
                 />
               )}
 
@@ -593,7 +625,7 @@ export default function App() {
 
               <div className="bottom-third">
                 <ClubPicker
-                  clubs={CLUBS}
+                  clubs={enabledClubsInBagOrder(state.bag)}
                   selectedClubId={state.selectedClubId}
                   surface={currentSurface}
                   disabled={controlsDisabled}
@@ -617,7 +649,7 @@ export default function App() {
                 </div>
                 <div className="swing-meta">
                   <span>
-                    {selectedClub.name} · ~{Math.round(clubExpectedCarry)} yds
+                    {selectedClub.name} · ~{formatDistance(clubExpectedCarry, unit)}
                   </span>
                   <span className="swing-meta-status">{sourceStatusText(state.sourceMode, state.device)}</span>
                   <label className="skip-toggle">
@@ -640,6 +672,7 @@ export default function App() {
               lastPuttResult={state.lastPuttResult}
               disabled={!sourcesReady}
               onPutt={handlePutt}
+              unit={unit}
             />
           )}
         </>
@@ -664,6 +697,16 @@ export default function App() {
           setSettingsOpen(false);
           setSessionReviewOpen(true);
         }}
+        handedness={handedness}
+        onHandednessChange={setHandedness}
+        unit={unit}
+        onUnitChange={setUnit}
+        skillProfileId={skillProfileId}
+        onSkillProfileChange={setSkillProfileId}
+        onOpenBagEditor={() => {
+          setSettingsOpen(false);
+          setBagEditorOpen(true);
+        }}
       />
 
       {sessionReviewOpen && (
@@ -671,8 +714,11 @@ export default function App() {
           entries={shotLogRef.current?.getSession(sessionIdRef.current) ?? []}
           onClose={() => setSessionReviewOpen(false)}
           onExport={handleExportSession}
+          unit={unit}
         />
       )}
+
+      {bagEditorOpen && <BagEditor bag={state.bag} onChange={handleBagChange} onClose={() => setBagEditorOpen(false)} />}
 
       {holeSelectOpen && (
         <HoleSelect

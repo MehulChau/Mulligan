@@ -47,10 +47,23 @@ export class SimulatedShotSource extends BaseShotSource {
    * The device never measures swing intent, only what happened, so this
    * only shapes what SimulatedShotSource generates; it has no analog on
    * ManualShotSource or RawShotEvent.
+   *
+   * `carryAdjustPct` (default: 0) is a per-club bag-editing correction
+   * (Part C) -- scales ball speed the same way a partial swing does, just
+   * from a persisted per-club setting instead of a per-shot slider. Applied
+   * to the club preset BEFORE swingFraction scaling, so the two compose
+   * (a player who's set their driver +5% still gets that correction on a
+   * partial-swing wedge too).
    */
-  hit(clubId: ClubId, timestamp: number = Date.now(), swingFraction: number = FULL_SWING_FRACTION): RawShotEvent {
+  hit(
+    clubId: ClubId,
+    timestamp: number = Date.now(),
+    swingFraction: number = FULL_SWING_FRACTION,
+    carryAdjustPct: number = 0,
+  ): RawShotEvent {
     this.requireStarted("hit a shot");
-    const baseClub = findClub(clubId);
+    const presetClub = findClub(clubId);
+    const baseClub = carryAdjustPct === 0 ? presetClub : { ...presetClub, ballSpeedMph: presetClub.ballSpeedMph * (1 + carryAdjustPct / 100) };
     const club = swingFraction === FULL_SWING_FRACTION ? baseClub : scaleClubForSwing(baseClub, swingFraction);
     const dispersion =
       swingFraction === FULL_SWING_FRACTION ? this.dispersion : scaleDispersionForSwing(this.dispersion, swingFraction);
@@ -74,5 +87,10 @@ export class SimulatedShotSource extends BaseShotSource {
    */
   getLastTrueShot(): RawShotEvent | null {
     return this.lastTrue;
+  }
+
+  /** Swaps the dispersion model live -- e.g. the player changes skill profile mid-session. Takes effect on the next hit(). */
+  setDispersion(dispersion: DispersionParams): void {
+    this.dispersion = dispersion;
   }
 }

@@ -1,6 +1,7 @@
 import { headingToward, surfaceAt, type Hole, type Point2, type ShotResult, type SurfacePolygon, type SurfaceType } from "@mulligan/game";
 import { radToDeg, degToRad } from "@mulligan/physics";
 import { useEffect, useRef } from "react";
+import { formatDistance, type UnitSystem } from "../preferences";
 import { computeCamera, effectiveBounds, screenToYards, yardsToScreen, type Bounds, type Camera } from "./camera";
 import { SURFACE_LABEL } from "./surfaceLabels";
 import {
@@ -62,6 +63,9 @@ export interface HoleCanvasProps {
   /** prefers-reduced-motion: behaves exactly like skipAnimation -- no flight animation, ball jumps to rest. */
   reducedMotion: boolean;
   onShotSettled: () => void;
+  /** Mirrors the whole rendered scene left/right and the aim-drag/keyboard direction to match (Part C) -- see camera.ts's mirrorX. */
+  leftHanded: boolean;
+  unit: UnitSystem;
 }
 
 type AnimPhase = "idle" | "flight" | "roll";
@@ -98,7 +102,7 @@ export function HoleCanvas(props: HoleCanvasProps) {
   // offscreen canvas and blit that every frame instead of repainting from
   // scratch at 60fps -- this is what makes the expensive texture work in
   // Part 1 affordable at all on a phone.
-  const bgCacheRef = useRef<{ canvas: HTMLCanvasElement; camera: Camera; w: number; h: number; hole: Hole } | null>(
+  const bgCacheRef = useRef<{ canvas: HTMLCanvasElement; camera: Camera; w: number; h: number; hole: Hole; unit: UnitSystem } | null>(
     null,
   );
 
@@ -207,9 +211,16 @@ export function HoleCanvas(props: HoleCanvasProps) {
     // aim that isn't a drag gesture.
     function handleKeyDown(e: KeyboardEvent) {
       if (propsRef.current.aimLocked) return;
+      // Mirroring the canvas (leftHanded) flips which sign of aimOffsetDeg
+      // moves the target visually left vs. right (see camera.ts) -- the
+      // arrow keys are a screen-space gesture ("move it left on screen"),
+      // so their delta sign has to flip in tandem to stay intuitive,
+      // unlike drag-to-aim, which gets this for free through
+      // screenToYards.
+      const mirror = propsRef.current.leftHanded ? -1 : 1;
       let delta = 0;
-      if (e.key === "ArrowLeft") delta = -(e.shiftKey ? AIM_KEY_STEP_DEG_FAST : AIM_KEY_STEP_DEG);
-      else if (e.key === "ArrowRight") delta = e.shiftKey ? AIM_KEY_STEP_DEG_FAST : AIM_KEY_STEP_DEG;
+      if (e.key === "ArrowLeft") delta = -mirror * (e.shiftKey ? AIM_KEY_STEP_DEG_FAST : AIM_KEY_STEP_DEG);
+      else if (e.key === "ArrowRight") delta = mirror * (e.shiftKey ? AIM_KEY_STEP_DEG_FAST : AIM_KEY_STEP_DEG);
       else return;
       e.preventDefault();
       const next = Math.max(-AIM_RANGE_DEG, Math.min(AIM_RANGE_DEG, propsRef.current.aimOffsetDeg + delta));
@@ -217,16 +228,18 @@ export function HoleCanvas(props: HoleCanvasProps) {
     }
     canvas.addEventListener("keydown", handleKeyDown);
 
-    function getBackground(camera: Camera, w: number, h: number, hole: Hole): HTMLCanvasElement {
+    function getBackground(camera: Camera, w: number, h: number, hole: Hole, unit: UnitSystem): HTMLCanvasElement {
       const cached = bgCacheRef.current;
       if (
         cached &&
         cached.hole === hole &&
         cached.w === w &&
         cached.h === h &&
+        cached.unit === unit &&
         cached.camera.scale === camera.scale &&
         cached.camera.offsetX === camera.offsetX &&
-        cached.camera.offsetY === camera.offsetY
+        cached.camera.offsetY === camera.offsetY &&
+        cached.camera.mirrorX === camera.mirrorX
       ) {
         return cached.canvas;
       }
@@ -239,9 +252,9 @@ export function HoleCanvas(props: HoleCanvasProps) {
       offCtx.lineCap = "round";
       offCtx.lineJoin = "round";
       drawSurfaces(offCtx, camera, hole, w, h);
-      drawYardageMarks(offCtx, camera, effectiveBoundsForHole(hole), w);
+      drawYardageMarks(offCtx, camera, effectiveBoundsForHole(hole), w, unit);
       drawPin(offCtx, camera, hole.pin);
-      bgCacheRef.current = { canvas: off, camera, w, h, hole };
+      bgCacheRef.current = { canvas: off, camera, w, h, hole, unit };
       return off;
     }
 
@@ -252,7 +265,7 @@ export function HoleCanvas(props: HoleCanvasProps) {
     function frame(now: number) {
       const w = container!.clientWidth;
       const h = container!.clientHeight;
-      const { hole, ballPos, aimOffsetDeg, expectedCarryYds, previousPaths, previousRestSpots } = propsRef.current;
+      const { hole, ballPos, aimOffsetDeg, expectedCarryYds, previousPaths, previousRestSpots, leftHanded, unit } = propsRef.current;
       const anim = animRef.current;
 
       // The static hole bounds don't guarantee every ball position stays in
@@ -267,10 +280,10 @@ export function HoleCanvas(props: HoleCanvasProps) {
         critical.push(anim.shot.rest);
       }
       const bounds = effectiveBounds(hole.bounds, critical);
-      const camera = computeCamera(bounds, w, h);
+      const camera = computeCamera(bounds, w, h, 28, leftHanded);
       cameraRef.current = camera;
 
-      const bg = getBackground(camera, w, h, hole);
+      const bg = getBackground(camera, w, h, hole, unit);
       ctx!.clearRect(0, 0, w, h);
       ctx!.drawImage(bg, 0, 0, w, h);
       drawPreviousTraces(ctx!, camera, previousPaths, previousRestSpots);
@@ -305,7 +318,7 @@ export function HoleCanvas(props: HoleCanvasProps) {
           y: ballPos.y + carryYds * Math.cos(aimHeadingRad),
         };
         drawAimLine(ctx!, camera, ballPos, target);
-        drawTargetMarker(ctx!, camera, target, carryYds, surfaceAt(hole, target));
+        drawTargetMarker(ctx!, camera, target, carryYds, surfaceAt(hole, target), unit);
         drawBallWithShadow(ctx!, camera, ballPos, 0);
       }
 
@@ -345,8 +358,15 @@ export function HoleCanvas(props: HoleCanvasProps) {
   }, []);
 
   const ariaValueDeg = Math.round(props.aimOffsetDeg);
+  // Screen-reader text describes the visual (mirrored, for a left-handed
+  // player) side, matching what a sighted player sees on the canvas --
+  // same reasoning as the keyboard delta flip above.
+  const positiveSideLabel = props.leftHanded ? "left" : "right";
+  const negativeSideLabel = props.leftHanded ? "right" : "left";
   const ariaLabel =
-    ariaValueDeg === 0 ? "Aim: aimed at the pin" : `Aim: ${Math.abs(ariaValueDeg)} degrees ${ariaValueDeg > 0 ? "right" : "left"} of the pin`;
+    ariaValueDeg === 0
+      ? "Aim: aimed at the pin"
+      : `Aim: ${Math.abs(ariaValueDeg)} degrees ${ariaValueDeg > 0 ? positiveSideLabel : negativeSideLabel} of the pin`;
 
   return (
     <div ref={containerRef} style={{ width: "100%", height: "100%", touchAction: "none" }}>
@@ -602,7 +622,7 @@ function drawSurfaces(ctx: CanvasRenderingContext2D, camera: Camera, hole: Hole,
   }
 }
 
-function drawYardageMarks(ctx: CanvasRenderingContext2D, camera: Camera, bounds: Bounds, w: number) {
+function drawYardageMarks(ctx: CanvasRenderingContext2D, camera: Camera, bounds: Bounds, w: number, unit: UnitSystem) {
   ctx.save();
   ctx.strokeStyle = "rgba(255,255,255,0.22)";
   ctx.fillStyle = "rgba(20,30,25,0.5)";
@@ -611,13 +631,16 @@ function drawYardageMarks(ctx: CanvasRenderingContext2D, camera: Camera, bounds:
   const start = Math.ceil(bounds.minY / YARDAGE_MARK_INTERVAL) * YARDAGE_MARK_INTERVAL;
   for (let y = start; y <= bounds.maxY; y += YARDAGE_MARK_INTERVAL) {
     if (y <= 0) continue;
+    // The 50-yard grid spacing itself stays in hole-space yards (unchanged
+    // physics/geometry) regardless of unit -- only the printed label
+    // converts, same as every other on-screen number.
     const left = yardsToScreen(camera, { x: bounds.minX, y });
     const right = yardsToScreen(camera, { x: bounds.maxX, y });
     ctx.beginPath();
     ctx.moveTo(Math.max(4, left.x), left.y);
     ctx.lineTo(Math.min(w - 4, right.x), right.y);
     ctx.stroke();
-    ctx.fillText(String(y), Math.max(6, left.x + 4), left.y - 7);
+    ctx.fillText(formatDistance(y, unit), Math.max(6, left.x + 4), left.y - 7);
   }
   ctx.restore();
 }
@@ -698,7 +721,7 @@ function drawAimLine(ctx: CanvasRenderingContext2D, camera: Camera, ballPos: Poi
  * Drawn every idle frame (cheap: one small ring, a couple of short text
  * calls), not cached, since it moves continuously during a drag.
  */
-function drawTargetMarker(ctx: CanvasRenderingContext2D, camera: Camera, target: Point2, carryYds: number, surface: SurfaceType) {
+function drawTargetMarker(ctx: CanvasRenderingContext2D, camera: Camera, target: Point2, carryYds: number, surface: SurfaceType, unit: UnitSystem) {
   const s = yardsToScreen(camera, target);
   ctx.save();
   ctx.strokeStyle = AIM_LINE_COLOR;
@@ -713,7 +736,7 @@ function drawTargetMarker(ctx: CanvasRenderingContext2D, camera: Camera, target:
   ctx.lineTo(s.x, s.y + 3);
   ctx.stroke();
 
-  const label = `${Math.round(carryYds)} yds · ${SURFACE_LABEL[surface]}`;
+  const label = `${formatDistance(carryYds, unit)} · ${SURFACE_LABEL[surface]}`;
   ctx.font = "700 11px Archivo, sans-serif";
   const metrics = ctx.measureText(label);
   const padX = 6;
