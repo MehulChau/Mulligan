@@ -19,12 +19,14 @@ import {
   type RawShotEvent,
 } from "@mulligan/shot-source";
 import { useEffect, useMemo, useReducer, useRef, useState, type ChangeEvent } from "react";
+import { ErrorBoundary } from "./ErrorBoundary";
 import { expectedCarryYds } from "./game/expectedCarry";
 import { DEFAULT_DEVICE_ADDRESS, createInitialState, gameReducer, type ShotHistoryEntry } from "./game/gameState";
 import { HoleCanvas } from "./game/HoleCanvas";
 import { SURFACE_LABEL } from "./game/surfaceLabels";
 import { usePrefersReducedMotion } from "./motion";
 import { useWakeLock } from "./useWakeLock";
+import { clearPersistedRoundState, hydrateRoundState, loadPersistedRound, saveRoundState, type PersistedRoundStateV1 } from "./persistence/roundStorage";
 import { ClubPicker } from "./ui/ClubPicker";
 import { CourseScorecard } from "./ui/CourseScorecard";
 import { DistanceHero } from "./ui/DistanceHero";
@@ -32,6 +34,7 @@ import { HoleSelect } from "./ui/HoleSelect";
 import { ManualEntryPanel } from "./ui/ManualEntryPanel";
 import { Onboarding } from "./ui/Onboarding";
 import { PuttingPanel } from "./ui/PuttingPanel";
+import { ResumePrompt } from "./ui/ResumePrompt";
 import { ScorecardSummary } from "./ui/ScorecardSummary";
 import { SessionReview } from "./ui/SessionReview";
 import { SettingsSheet } from "./ui/SettingsSheet";
@@ -124,6 +127,13 @@ export default function App() {
   const [holeSelectOpen, setHoleSelectOpen] = useState(false);
   const [sessionReviewOpen, setSessionReviewOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => !readOnboardingSeen());
+  const [resumeChoicePending, setResumeChoicePending] = useState<PersistedRoundStateV1 | null>(null);
+  // Gates the continuous-save effect below until the boot-time resume/
+  // discard decision is made -- without this, the effect's first run (with
+  // the fresh default state createInitialState produced) would overwrite
+  // the very round the resume prompt is about to offer, before the player
+  // ever sees it.
+  const readyToPersistRef = useRef(false);
 
   function handleOnboardingDone(): void {
     setShowOnboarding(false);
@@ -139,6 +149,48 @@ export default function App() {
   // holes, so the whole session (including reading a between-hole
   // scorecard) is dead time the screen shouldn't sleep through.
   useWakeLock(!showOnboarding);
+
+  // Part B: check once, on boot, whether a round was left in progress.
+  // COURSE is static module-level data, safe to reference before any
+  // render-derived state exists.
+  useEffect(() => {
+    let cancelled = false;
+    loadPersistedRound(COURSE).then((persisted) => {
+      if (cancelled) return;
+      if (persisted) {
+        setResumeChoicePending(persisted);
+      } else {
+        readyToPersistRef.current = true;
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Continuous save -- debounced because SET_AIM_OFFSET_DEG fires on every
+  // slider drag tick, and hitting IndexedDB that often is pointless work
+  // for a value that only matters at the moment of the next swing.
+  useEffect(() => {
+    if (!readyToPersistRef.current) return;
+    const timeout = setTimeout(() => {
+      saveRoundState(state);
+    }, 250);
+    return () => clearTimeout(timeout);
+  }, [state]);
+
+  function handleResumeRound() {
+    if (!resumeChoicePending) return;
+    dispatch({ type: "RESUME_ROUND", state: hydrateRoundState(resumeChoicePending, COURSE) });
+    setResumeChoicePending(null);
+    readyToPersistRef.current = true;
+  }
+
+  function handleDiscardRound() {
+    clearPersistedRoundState();
+    setResumeChoicePending(null);
+    readyToPersistRef.current = true;
+  }
 
   useEffect(() => {
     const simulated = new SimulatedShotSource();
@@ -470,6 +522,7 @@ export default function App() {
         </div>
       )}
 
+      <ErrorBoundary>
       {state.phase !== "holed" && (
         <DistanceHero distanceToPinYds={distanceToPinYds} surface={currentSurface} lastPenalty={state.lastPenalty} />
       )}
@@ -591,6 +644,7 @@ export default function App() {
           )}
         </>
       )}
+      </ErrorBoundary>
 
       <SettingsSheet
         open={settingsOpen}
@@ -630,7 +684,11 @@ export default function App() {
         />
       )}
 
-      {showOnboarding && <Onboarding onDone={handleOnboardingDone} />}
+      {resumeChoicePending ? (
+        <ResumePrompt persisted={resumeChoicePending} onResume={handleResumeRound} onDiscard={handleDiscardRound} />
+      ) : (
+        showOnboarding && <Onboarding onDone={handleOnboardingDone} />
+      )}
     </div>
   );
 }

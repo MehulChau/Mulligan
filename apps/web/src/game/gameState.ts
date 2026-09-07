@@ -146,7 +146,8 @@ export type GameAction =
   | { type: "START_AIM_ZERO_CALIBRATION" }
   | { type: "AIM_ZERO_SAMPLE_RECEIVED"; raw: RawShotEvent }
   | { type: "CONFIRM_AIM_ZERO" }
-  | { type: "CANCEL_AIM_ZERO_CALIBRATION" };
+  | { type: "CANCEL_AIM_ZERO_CALIBRATION" }
+  | { type: "RESUME_ROUND"; state: GameState };
 
 /** An amateur golfer picks up after this many putts on one green; nothing loops forever. */
 const MAX_PUTTS = 5;
@@ -346,6 +347,13 @@ export function gameReducer(state: GameState, action: GameAction): GameState {
 
     case "CANCEL_AIM_ZERO_CALIBRATION":
       return { ...state, device: { ...state.device, calibratingZero: false, pendingZeroSample: null } };
+
+    // A wholesale replacement, not a merge -- the persistence layer
+    // (persistence/roundStorage.ts) already did the work of rebuilding a
+    // complete, valid GameState from what was saved. Nothing here needs to
+    // reach into it field by field.
+    case "RESUME_ROUND":
+      return action.state;
 
     default:
       return state;
