@@ -24,6 +24,7 @@ export interface SettingsSheetProps {
   onExportSession: () => void;
   onImportSessionFile: (e: ChangeEvent<HTMLInputElement>) => void;
   onOpenSessionReview: () => void;
+  onOpenProgress: () => void;
   handedness: Handedness;
   onHandednessChange: (h: Handedness) => void;
   unit: UnitSystem;
@@ -55,6 +56,7 @@ export function SettingsSheet({
   onExportSession,
   onImportSessionFile,
   onOpenSessionReview,
+  onOpenProgress,
   handedness,
   onHandednessChange,
   unit,
@@ -177,6 +179,11 @@ export function SettingsSheet({
             <input type="file" accept="application/json" className="session-file-input" onChange={onImportSessionFile} />
           </label>
         </div>
+
+        <div className="sheet-section-label">Progress</div>
+        <button type="button" className="device-action device-action-quiet settings-explainer-toggle" onClick={onOpenProgress}>
+          History, personal bests &amp; club stats
+        </button>
       </div>
     </div>
   );

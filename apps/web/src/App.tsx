@@ -1,5 +1,5 @@
 import { degToRad } from "@mulligan/physics";
-import { COURSE, headingToward, isPenaltySurface, resolvePutt, resolveShot, summarizeScore, surfaceAt } from "@mulligan/game";
+import { COURSE, MAX_PUTTS, headingToward, isPenaltySurface, resolvePutt, resolveShot, summarizeScore, surfaceAt } from "@mulligan/game";
 import {
   FULL_SWING_FRACTION,
   ManualShotSource,
@@ -29,6 +29,8 @@ import { usePrefersReducedMotion } from "./motion";
 import { distanceValue, formatDistance, formatShortDistance, usePreferences } from "./preferences";
 import { useWakeLock } from "./useWakeLock";
 import { clearPersistedRoundState, hydrateRoundState, loadPersistedRound, saveRoundState, type PersistedRoundStateV1 } from "./persistence/roundStorage";
+import { buildEverythingExport, everythingExportToJSON, parseEverythingImport } from "./persistence/exportEverything";
+import { getAllHoleCompletions, recordHoleCompletion } from "./persistence/history";
 import { BagEditor } from "./ui/BagEditor";
 import { ClubPicker } from "./ui/ClubPicker";
 import { CourseScorecard } from "./ui/CourseScorecard";
@@ -36,6 +38,7 @@ import { DistanceHero } from "./ui/DistanceHero";
 import { HoleSelect } from "./ui/HoleSelect";
 import { ManualEntryPanel } from "./ui/ManualEntryPanel";
 import { Onboarding } from "./ui/Onboarding";
+import { ProgressView } from "./ui/ProgressView";
 import { PuttingPanel } from "./ui/PuttingPanel";
 import { ResumePrompt } from "./ui/ResumePrompt";
 import { ScorecardSummary } from "./ui/ScorecardSummary";
@@ -132,6 +135,7 @@ export default function App() {
   const [holeSelectOpen, setHoleSelectOpen] = useState(false);
   const [sessionReviewOpen, setSessionReviewOpen] = useState(false);
   const [bagEditorOpen, setBagEditorOpen] = useState(false);
+  const [progressOpen, setProgressOpen] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(() => !readOnboardingSeen());
   const [resumeChoicePending, setResumeChoicePending] = useState<PersistedRoundStateV1 | null>(null);
   // Gates the continuous-save effect below until the boot-time resume/
@@ -432,6 +436,24 @@ export default function App() {
       holed: result.holed,
       puttingSeed: puttingSeedRef.current,
     });
+
+    // Part D: the durable record history/personal-bests/progress are built
+    // on -- GameState's roundScores only lives for the current round, so
+    // this is the one moment a hole's final score has to be written
+    // somewhere that survives "New round" and closing the tab.
+    const finished = result.holed || state.puttAttempts + 1 >= MAX_PUTTS;
+    if (finished) {
+      recordHoleCompletion({
+        id: `${sessionIdRef.current}-${state.hole.id}-${Date.now()}`,
+        sessionId: sessionIdRef.current,
+        timestamp: Date.now(),
+        courseHoleIndex: state.courseHoleIndex,
+        holeId: state.hole.id,
+        holeName: state.hole.name,
+        par: state.hole.par,
+        strokes: state.strokeCount + 1,
+      });
+    }
   }
 
   // Hole transitions (next/select) all stay inside the SAME session -- a
@@ -514,6 +536,54 @@ export default function App() {
       .catch((err) => {
         setSessionMessage(err instanceof Error ? `Import failed: ${err.message}` : "Import failed. Check the file and try again.");
       });
+  }
+
+  // Part D: "the substitute for accounts" -- everything the app knows
+  // about the player (every shot ever, every hole completion, bag,
+  // preferences), not just the current session. Distinct from
+  // handleExportSession above, which is one range visit for replay.
+  function handleExportEverything(): void {
+    const log = shotLogRef.current;
+    getAllHoleCompletions().then((completions) => {
+      const bundle = buildEverythingExport(log?.getAll() ?? [], completions, state.bag, { handedness, unit, skillProfileId });
+      const blob = new Blob([everythingExportToJSON(bundle)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `mulligan-everything-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setSessionMessage(`Exported ${bundle.shotLog.length} shots and ${bundle.holeCompletions.length} hole completions.`);
+    });
+  }
+
+  // A merge, not a replace -- imported shots/completions are appended
+  // alongside whatever's already recorded (so importing on a fresh browser
+  // and importing as a "just in case" backup both do the sane thing);
+  // bag/preferences are the exception, applied wholesale, since "restore
+  // my stuff" reasonably means the player wants those back too, not merged
+  // field by field.
+  function handleImportEverythingFile(e: ChangeEvent<HTMLInputElement>): void {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    file.text().then((text) => {
+      const bundle = parseEverythingImport(text);
+      if (!bundle) {
+        setSessionMessage("Import failed: not a valid export file.");
+        return;
+      }
+      const log = shotLogRef.current;
+      if (log) for (const entry of bundle.shotLog) log.append(entry);
+      Promise.all(bundle.holeCompletions.map(recordHoleCompletion)).then(() => {
+        setSessionMessage(`Imported ${bundle.shotLog.length} shots and ${bundle.holeCompletions.length} hole completions.`);
+      });
+      dispatch({ type: "SET_BAG", bag: bundle.bag });
+      setHandedness(bundle.preferences.handedness);
+      setUnit(bundle.preferences.unit);
+      setSkillProfileId(bundle.preferences.skillProfileId);
+    });
   }
 
   const animating = state.pendingShot !== null;
@@ -697,6 +767,10 @@ export default function App() {
           setSettingsOpen(false);
           setSessionReviewOpen(true);
         }}
+        onOpenProgress={() => {
+          setSettingsOpen(false);
+          setProgressOpen(true);
+        }}
         handedness={handedness}
         onHandednessChange={setHandedness}
         unit={unit}
@@ -715,6 +789,17 @@ export default function App() {
           onClose={() => setSessionReviewOpen(false)}
           onExport={handleExportSession}
           unit={unit}
+        />
+      )}
+
+      {progressOpen && (
+        <ProgressView
+          onClose={() => setProgressOpen(false)}
+          shotLog={shotLogRef.current}
+          courseLength={COURSE.length}
+          unit={unit}
+          onExportEverything={handleExportEverything}
+          onImportEverythingFile={handleImportEverythingFile}
         />
       )}
 

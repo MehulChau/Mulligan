@@ -88,6 +88,11 @@ export class ShotLog {
     return [...new Set(this.readAll().map((entry) => entry.sessionId))];
   }
 
+  /** Every stroke ever logged, across every session -- the source data for all-time per-club stats (Part D). */
+  getAll(): ShotLogEntry[] {
+    return this.readAll();
+  }
+
   private readAll(): ShotLogEntry[] {
     const raw = this.store.getItem(STORAGE_KEY);
     if (!raw) return [];

@@ -10,17 +10,26 @@
  */
 
 const DB_NAME = "mulligan";
-const DB_VERSION = 1;
+// Every object store the app has ever needed, in one place -- onupgradeneeded
+// below creates whichever of these don't exist yet, regardless of which
+// specific store the current call asked for. A version bump only fires
+// upgrade logic for browsers that already have an older version of the
+// database; adding a new store means adding its name here AND bumping this
+// number, or existing installs would never get the new store created.
+const ALL_STORES = ["round", "holeCompletions"] as const;
+const DB_VERSION = 2;
 
-function openDb(storeName: string): Promise<IDBDatabase | null> {
+function openDb(): Promise<IDBDatabase | null> {
   if (typeof indexedDB === "undefined") return Promise.resolve(null);
 
   return new Promise((resolve) => {
     let settled = false;
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onupgradeneeded = () => {
-      if (!req.result.objectStoreNames.contains(storeName)) {
-        req.result.createObjectStore(storeName);
+      for (const name of ALL_STORES) {
+        if (!req.result.objectStoreNames.contains(name)) {
+          req.result.createObjectStore(name);
+        }
       }
     };
     req.onsuccess = () => {
@@ -40,7 +49,7 @@ function openDb(storeName: string): Promise<IDBDatabase | null> {
 }
 
 export async function idbGet<T>(storeName: string, key: string): Promise<T | undefined> {
-  const db = await openDb(storeName);
+  const db = await openDb();
   if (!db) return undefined;
   return new Promise((resolve) => {
     const tx = db.transaction(storeName, "readonly");
@@ -51,7 +60,7 @@ export async function idbGet<T>(storeName: string, key: string): Promise<T | und
 }
 
 export async function idbSet<T>(storeName: string, key: string, value: T): Promise<void> {
-  const db = await openDb(storeName);
+  const db = await openDb();
   if (!db) return;
   return new Promise((resolve) => {
     const tx = db.transaction(storeName, "readwrite");
@@ -61,8 +70,20 @@ export async function idbSet<T>(storeName: string, key: string, value: T): Promi
   });
 }
 
+/** Every record in a store -- IDBObjectStore.getAll() is supported everywhere this app already targets (no polyfill needed). */
+export async function idbGetAll<T>(storeName: string): Promise<T[]> {
+  const db = await openDb();
+  if (!db) return [];
+  return new Promise((resolve) => {
+    const tx = db.transaction(storeName, "readonly");
+    const req = tx.objectStore(storeName).getAll();
+    req.onsuccess = () => resolve((req.result as T[]) ?? []);
+    req.onerror = () => resolve([]);
+  });
+}
+
 export async function idbDelete(storeName: string, key: string): Promise<void> {
-  const db = await openDb(storeName);
+  const db = await openDb();
   if (!db) return;
   return new Promise((resolve) => {
     const tx = db.transaction(storeName, "readwrite");
