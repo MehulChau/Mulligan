@@ -1,5 +1,7 @@
 # Mulligan
 
+[![CI](https://github.com/MehulChau/Mulligan/actions/workflows/ci.yml/badge.svg)](https://github.com/MehulChau/Mulligan/actions/workflows/ci.yml)
+
 DIY golf launch monitor + phone golf simulator. (Full project writeup lands
 in a later pass — this is a working stub covering setup and deploy.)
 

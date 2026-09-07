@@ -229,9 +229,10 @@ export function HoleCanvas(props: HoleCanvasProps) {
       // unlike drag-to-aim, which gets this for free through
       // screenToYards.
       const mirror = propsRef.current.leftHanded ? -1 : 1;
-      let delta = 0;
-      if (e.key === "ArrowLeft") delta = -mirror * (e.shiftKey ? AIM_KEY_STEP_DEG_FAST : AIM_KEY_STEP_DEG);
-      else if (e.key === "ArrowRight") delta = mirror * (e.shiftKey ? AIM_KEY_STEP_DEG_FAST : AIM_KEY_STEP_DEG);
+      const step = e.shiftKey ? AIM_KEY_STEP_DEG_FAST : AIM_KEY_STEP_DEG;
+      let delta: number;
+      if (e.key === "ArrowLeft") delta = -mirror * step;
+      else if (e.key === "ArrowRight") delta = mirror * step;
       else return;
       e.preventDefault();
       const next = Math.max(-AIM_RANGE_DEG, Math.min(AIM_RANGE_DEG, propsRef.current.aimOffsetDeg + delta));

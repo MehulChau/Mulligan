@@ -17,6 +17,7 @@
 
 import { simulate } from './packages/physics/src/index';
 import { CLUBS } from './packages/shot-source/src/clubs';
+import type { TrajectoryPoint } from './packages/physics/src/types';
 
 const MPH = 0.44704;
 const YD = 1.09361;
@@ -69,7 +70,7 @@ console.log('');
 console.log('club      carry       delta    apex    hang   descent');
 console.log('------------------------------------------------------------');
 
-for (const club of CLUBS as any[]) {
+for (const club of CLUBS) {
   const g = GOLDEN[club.id];
   if (!g) {
     ok('club:' + club.id, false, 'id not present in golden table');
@@ -135,9 +136,9 @@ ok(
 );
 ok(
   'time strictly increases',
-  s.points.every((p: any, i: number) => i === 0 || p.t > s.points[i - 1].t),
+  s.points.every((p: TrajectoryPoint, i: number) => i === 0 || p.t > s.points[i - 1]!.t),
 );
-ok('apex exceeds all sampled heights', s.points.every((p: any) => p.y <= s.apex + 1e-9));
+ok('apex exceeds all sampled heights', s.points.every((p: TrajectoryPoint) => p.y <= s.apex + 1e-9));
 ok('descent angle is positive', s.landing.descentAngle > 0);
 ok('spin decays in flight', s.landing.spinRate < 7100 * RPM);
 

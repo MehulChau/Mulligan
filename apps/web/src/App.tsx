@@ -273,19 +273,26 @@ export default function App() {
   const previousRestSpots = useMemo(() => state.shotHistory.map((entry) => entry.result.rest), [state.shotHistory]);
 
   const lastEntry: ShotHistoryEntry | undefined = state.shotHistory[state.shotHistory.length - 1];
-  const readoutData: ShotReadoutData | null =
-    state.phase === "shot" && lastEntry
-      ? {
-          key: String(lastEntry.raw.timestamp),
-          club: findClub(lastEntry.clubId),
-          carryYds: lastEntry.result.carryYds,
-          totalYds: lastEntry.result.totalYds,
-          ballSpeedMph: lastEntry.shot.ballSpeedMph,
-          launchDeg: lastEntry.shot.launchDeg,
-          spinRpm: lastEntry.shot.spinRpm,
-          provenance: lastEntry.shot.provenance,
-        }
-      : null;
+  // Memoized (not just computed inline) so roundNarration's own useMemo
+  // below -- which depends on this -- doesn't see a new object identity,
+  // and therefore recompute, on every render regardless of whether the
+  // underlying shot actually changed.
+  const readoutData: ShotReadoutData | null = useMemo(
+    () =>
+      state.phase === "shot" && lastEntry
+        ? {
+            key: String(lastEntry.raw.timestamp),
+            club: findClub(lastEntry.clubId),
+            carryYds: lastEntry.result.carryYds,
+            totalYds: lastEntry.result.totalYds,
+            ballSpeedMph: lastEntry.shot.ballSpeedMph,
+            launchDeg: lastEntry.shot.launchDeg,
+            spinRpm: lastEntry.shot.spinRpm,
+            provenance: lastEntry.shot.provenance,
+          }
+        : null,
+    [state.phase, lastEntry],
+  );
 
   // Part E: the canvas is entirely visual -- a blind player needs a text
   // equivalent that updates as the round progresses. One aria-live=polite

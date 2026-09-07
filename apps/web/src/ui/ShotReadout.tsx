@@ -49,7 +49,6 @@ function useCountUp(targets: number[], trigger: string, durationMs: number, skip
     return () => cancelAnimationFrame(raf);
     // trigger alone intentionally governs re-running this -- targets for the
     // same shot don't change mid-animation.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trigger, skip, durationMs]);
 
   return values;

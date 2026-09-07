@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx tsx verify-m0.ts
+      # Fails on a TypeScript error the same way `npm run build` would for
+      # a real deploy -- GITHUB_PAGES is deliberately unset here, so this
+      # checks the same build a PR branch would actually ship locally, not
+      # the GitHub-Pages-specific base path (that's deploy.yml's concern).
+      - run: npm run build
