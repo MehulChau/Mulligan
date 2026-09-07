@@ -41,6 +41,72 @@ possible later — `ShotSource` is the abstraction boundary, and a
 `BleShotSource` would implement the exact same interface `NetworkShotSource`
 does. Nothing in the game or the UI would need to change.
 
+## HTTPS deployment and mixed content — the honest answer
+
+**A copy of this app deployed to GitHub Pages (served over `https://`) cannot
+connect to a `ws://` device on the local network. This is not a bug in
+either side — it's a browser security restriction (mixed content blocking),
+and no amount of retrying or reconnect logic in `NetworkShotSource` works
+around it.**
+
+Every modern browser (Chrome, Safari, Firefox) refuses to let a page loaded
+over `https://` open a plain, unencrypted `ws://` connection, full stop.
+This is "active mixed content" blocking, the same rule that blocks an
+`https://` page from loading an `http://` script. It is enforced at the
+browser level before the connection attempt reaches the network — no error
+message from the device, no timeout, the `WebSocket` constructor's own
+`open`/`error` events are what fire, indistinguishable from the device
+being unreachable. It applies to a device at `ws://192.168.1.x:8080` on the
+same WiFi network exactly as it would to a public server; **only
+`ws://localhost` and `ws://127.0.0.1` get a browser exemption**, and a Pi on
+the range network is neither of those to the phone's browser.
+
+This matters here specifically because Part A's own goal — install the app
+from GitHub Pages so it's available from anywhere, works offline, feels
+like a real app — produces exactly the deployment (HTTPS) that triggers
+this. The convenience and the device connection are in tension, and
+pretending otherwise would mean shipping a Device-mode connect button that
+silently fails the first time someone tries it at the range.
+
+Three honest options, none of them free:
+
+1. **Serve the app itself over local HTTP, on the same network as the
+   device, instead of installing the GitHub Pages build.** e.g. run
+   `npm run preview` (or `vite build && npx serve`) on a laptop at the
+   range, and open `http://<laptop-ip>:4173` on the phone. An `http://`
+   page can open a `ws://` connection with no restriction. This sacrifices
+   "install once, use anywhere" — the app has to be actively served by
+   something on the local network every session — but it's genuinely free
+   (no cert, no config) and matches how the hardware bring-up ladder in
+   `CLAUDE.md` already expects a laptop in the loop. **This is the
+   pragmatic default for now.**
+2. **The device terminates TLS and speaks `wss://` with a self-signed
+   certificate.** The GitHub Pages build can then open a `wss://<device-ip>`
+   connection from an `https://` page — encrypted-to-encrypted isn't mixed
+   content. The catch: a self-signed cert isn't trusted by the phone's
+   browser by default, so the player has to visit `https://<device-ip>:<port>`
+   directly once per device (or per cert renewal) and click through the
+   browser's "this connection is not private" warning before the
+   WebSocket handshake will succeed — an extra manual step, and one that
+   looks alarming to anyone who doesn't already know why it's there. Real
+   but not zero-friction; would need a line or two in onboarding if this
+   path is ever built.
+3. **A local reverse proxy/relay with a properly trusted certificate** (e.g.
+   via `mkcert`'s local CA installed on the phone, or a tunnel service).
+   Removes the browser warning from option 2, but adds a whole extra
+   moving part (something that has to be running, configured, and kept
+   alive alongside the device itself) for a single-device personal
+   project. **Overkill at this project's current stage** — flagged here so
+   it's not forgotten if this ever needs to support someone else's device
+   on someone else's network, not because it's the next thing to build.
+
+Nothing about this changes the wire protocol itself (still WebSocket,
+device-as-server, same message set) — it's entirely about what URL scheme
+the app is allowed to dial from wherever it happens to be served. Option 1
+needs no protocol or app changes at all, which is exactly why it's the
+default: this can be discovered and written down now, without inventing
+device-side TLS work that has no real device to test against yet.
+
 ## Versioning
 
 Every `hello` message carries a `protocolVersion: { major: number, minor:

@@ -24,6 +24,7 @@ import { DEFAULT_DEVICE_ADDRESS, createInitialState, gameReducer, type ShotHisto
 import { HoleCanvas } from "./game/HoleCanvas";
 import { SURFACE_LABEL } from "./game/surfaceLabels";
 import { usePrefersReducedMotion } from "./motion";
+import { useWakeLock } from "./useWakeLock";
 import { ClubPicker } from "./ui/ClubPicker";
 import { CourseScorecard } from "./ui/CourseScorecard";
 import { DistanceHero } from "./ui/DistanceHero";
@@ -133,6 +134,11 @@ export default function App() {
     }
   }
   const reducedMotion = usePrefersReducedMotion();
+  // A round is "in progress" from the moment onboarding is out of the way
+  // until... indefinitely -- there's no menu screen to come back to between
+  // holes, so the whole session (including reading a between-hole
+  // scorecard) is dead time the screen shouldn't sleep through.
+  useWakeLock(!showOnboarding);
 
   useEffect(() => {
     const simulated = new SimulatedShotSource();

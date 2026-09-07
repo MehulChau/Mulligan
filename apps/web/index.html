@@ -16,12 +16,11 @@
     <meta name="apple-mobile-web-app-title" content="Mulligan" />
     <meta name="format-detection" content="telephone=no" />
     <title>Mulligan</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800&display=swap"
-      rel="stylesheet"
-    />
+    <!-- vite-plugin-pwa injects <link rel="manifest"> and registers the
+         service worker at build time; the apple-touch-icon isn't part of
+         the web manifest spec, so it stays a manual link. -->
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon-180.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png" />
   </head>
   <body>
     <div id="root"></div>

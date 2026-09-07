@@ -55,6 +55,15 @@ export function DeviceSourcePanel({ device, disabled, onAddressChange, onConnect
   }
 
   const wasConnected = deviceInfo !== null;
+  // The single most likely cause of "Connect" silently failing on an
+  // installed (GitHub-Pages-served, https://) copy of this app: the
+  // browser blocks an https:// page from opening a ws:// socket at all
+  // (mixed content), before the device even sees an attempt. See
+  // docs/device-protocol.md's "HTTPS deployment and mixed content" section
+  // for the full story and the workarounds -- this is just the in-app nudge
+  // toward that explanation instead of a generic "check the address."
+  const mixedContentSuspected =
+    typeof window !== "undefined" && window.location.protocol === "https:" && address.trim().toLowerCase().startsWith("ws://");
 
   return (
     <div className="device-panel">
@@ -82,7 +91,15 @@ export function DeviceSourcePanel({ device, disabled, onAddressChange, onConnect
         >
           {connectionState === "connecting" ? "Connecting…" : "Connect"}
         </button>
-        {connectionState === "error" && <span className="device-error">Couldn't connect — check the address and try again</span>}
+        {connectionState === "error" && mixedContentSuspected && (
+          <span className="device-error">
+            Couldn't connect — this installed app can't reach a ws:// device (browser security). Open it over local
+            http:// instead, e.g. from a laptop running the app on the same WiFi as the device.
+          </span>
+        )}
+        {connectionState === "error" && !mixedContentSuspected && (
+          <span className="device-error">Couldn't connect — check the address and try again</span>
+        )}
         {connectionState === "disconnected" && wasConnected && (
           <span className="device-error">Disconnected — reconnecting… you can switch to Simulated or Manual to keep playing</span>
         )}
