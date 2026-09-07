@@ -554,6 +554,8 @@ export default function App() {
       a.click();
       URL.revokeObjectURL(url);
       setSessionMessage(`Exported ${bundle.shotLog.length} shots and ${bundle.holeCompletions.length} hole completions.`);
+    }).catch(() => {
+      setSessionMessage("Export failed. Try again.");
     });
   }
 
@@ -583,6 +585,8 @@ export default function App() {
       setHandedness(bundle.preferences.handedness);
       setUnit(bundle.preferences.unit);
       setSkillProfileId(bundle.preferences.skillProfileId);
+    }).catch(() => {
+      setSessionMessage("Import failed. Check the file and try again.");
     });
   }
 

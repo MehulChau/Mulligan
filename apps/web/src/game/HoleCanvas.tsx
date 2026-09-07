@@ -1,6 +1,6 @@
 import { headingToward, surfaceAt, type Hole, type Point2, type ShotResult, type SurfacePolygon, type SurfaceType } from "@mulligan/game";
 import { radToDeg, degToRad } from "@mulligan/physics";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { formatDistance, type UnitSystem } from "../preferences";
 import { computeCamera, effectiveBounds, screenToYards, yardsToScreen, type Bounds, type Camera } from "./camera";
 import { SURFACE_LABEL } from "./surfaceLabels";
@@ -86,6 +86,17 @@ export function HoleCanvas(props: HoleCanvasProps) {
   // Latest props, read from inside the rAF loop without re-subscribing it.
   const propsRef = useRef(props);
   propsRef.current = props;
+
+  // The rAF draw loop runs entirely outside React's render cycle -- a
+  // thrown exception there is invisible to the ErrorBoundary App.tsx
+  // wraps this component in, AND silently kills the animation loop for
+  // good (nothing schedules the next frame after a throw), leaving a
+  // frozen canvas with no error and no recovery path. Catching it in the
+  // loop and re-throwing it here, during a real render, is the standard
+  // way to hand an error from outside React back to a boundary that can
+  // only catch render-time errors.
+  const [canvasError, setCanvasError] = useState<Error | null>(null);
+  if (canvasError) throw canvasError;
 
   const animRef = useRef<{
     phase: AnimPhase;
@@ -263,66 +274,74 @@ export function HoleCanvas(props: HoleCanvasProps) {
     }
 
     function frame(now: number) {
-      const w = container!.clientWidth;
-      const h = container!.clientHeight;
-      const { hole, ballPos, aimOffsetDeg, expectedCarryYds, previousPaths, previousRestSpots, leftHanded, unit } = propsRef.current;
-      const anim = animRef.current;
+      try {
+        const w = container!.clientWidth;
+        const h = container!.clientHeight;
+        const { hole, ballPos, aimOffsetDeg, expectedCarryYds, previousPaths, previousRestSpots, leftHanded, unit } = propsRef.current;
+        const anim = animRef.current;
 
-      // The static hole bounds don't guarantee every ball position stays in
-      // frame -- dispersion (or an extreme manual entry) can carry a shot
-      // past them. Keep the ball, and the whole active flight, always
-      // visible; never let it render off-canvas.
-      const critical: Point2[] = [ballPos];
-      if (anim.shot) {
-        const path = anim.shot.path2d;
-        const stride = Math.max(1, Math.floor(path.length / 40));
-        for (let i = 0; i < path.length; i += stride) critical.push(path[i]!);
-        critical.push(anim.shot.rest);
-      }
-      const bounds = effectiveBounds(hole.bounds, critical);
-      const camera = computeCamera(bounds, w, h, 28, leftHanded);
-      cameraRef.current = camera;
-
-      const bg = getBackground(camera, w, h, hole, unit);
-      ctx!.clearRect(0, 0, w, h);
-      ctx!.drawImage(bg, 0, 0, w, h);
-      drawPreviousTraces(ctx!, camera, previousPaths, previousRestSpots);
-
-      if (anim.phase === "flight" && anim.shot) {
-        const elapsed = now - anim.startedAt;
-        const progress = Math.min(1, elapsed / FLIGHT_DURATION_MS);
-        drawAnimatingShot(ctx!, camera, anim.shot, progress);
-        if (progress >= 1) {
-          anim.phase = "roll";
-          anim.startedAt = now;
+        // The static hole bounds don't guarantee every ball position stays
+        // in frame -- dispersion (or an extreme manual entry) can carry a
+        // shot past them. Keep the ball, and the whole active flight,
+        // always visible; never let it render off-canvas.
+        const critical: Point2[] = [ballPos];
+        if (anim.shot) {
+          const path = anim.shot.path2d;
+          const stride = Math.max(1, Math.floor(path.length / 40));
+          for (let i = 0; i < path.length; i += stride) critical.push(path[i]!);
+          critical.push(anim.shot.rest);
         }
-      } else if (anim.phase === "roll" && anim.shot) {
-        const elapsed = now - anim.startedAt;
-        const progress = Math.min(1, elapsed / ROLL_DURATION_MS);
-        drawFadedTrace(ctx!, camera, anim.shot.path2d, BALL_TRACE_COLOR, BALL_TRACE_GLOW, 1, apexIndex(anim.shot.trajectory.points));
-        const impactProgress = clamp01(elapsed / IMPACT_RING_DURATION_MS);
-        drawImpactRing(ctx!, camera, anim.shot.landing, impactProgress);
-        const rollPos = lerpPoint(anim.shot.landing, anim.shot.rest, easeOutCubic(progress));
-        drawBallWithShadow(ctx!, camera, rollPos, 0);
-        if (progress >= 1) {
-          anim.phase = "idle";
-          anim.shot = null;
-          propsRef.current.onShotSettled();
-        }
-      } else {
-        const liveDeg = liveAimDegRef.current ?? aimOffsetDeg;
-        const aimHeadingRad = headingToward(ballPos, hole.pin) + degToRad(liveDeg);
-        const carryYds = Math.max(5, expectedCarryYds);
-        const target: Point2 = {
-          x: ballPos.x + carryYds * Math.sin(aimHeadingRad),
-          y: ballPos.y + carryYds * Math.cos(aimHeadingRad),
-        };
-        drawAimLine(ctx!, camera, ballPos, target);
-        drawTargetMarker(ctx!, camera, target, carryYds, surfaceAt(hole, target), unit);
-        drawBallWithShadow(ctx!, camera, ballPos, 0);
-      }
+        const bounds = effectiveBounds(hole.bounds, critical);
+        const camera = computeCamera(bounds, w, h, 28, leftHanded);
+        cameraRef.current = camera;
 
-      rafId = requestAnimationFrame(frame);
+        const bg = getBackground(camera, w, h, hole, unit);
+        ctx!.clearRect(0, 0, w, h);
+        ctx!.drawImage(bg, 0, 0, w, h);
+        drawPreviousTraces(ctx!, camera, previousPaths, previousRestSpots);
+
+        if (anim.phase === "flight" && anim.shot) {
+          const elapsed = now - anim.startedAt;
+          const progress = Math.min(1, elapsed / FLIGHT_DURATION_MS);
+          drawAnimatingShot(ctx!, camera, anim.shot, progress);
+          if (progress >= 1) {
+            anim.phase = "roll";
+            anim.startedAt = now;
+          }
+        } else if (anim.phase === "roll" && anim.shot) {
+          const elapsed = now - anim.startedAt;
+          const progress = Math.min(1, elapsed / ROLL_DURATION_MS);
+          drawFadedTrace(ctx!, camera, anim.shot.path2d, BALL_TRACE_COLOR, BALL_TRACE_GLOW, 1, apexIndex(anim.shot.trajectory.points));
+          const impactProgress = clamp01(elapsed / IMPACT_RING_DURATION_MS);
+          drawImpactRing(ctx!, camera, anim.shot.landing, impactProgress);
+          const rollPos = lerpPoint(anim.shot.landing, anim.shot.rest, easeOutCubic(progress));
+          drawBallWithShadow(ctx!, camera, rollPos, 0);
+          if (progress >= 1) {
+            anim.phase = "idle";
+            anim.shot = null;
+            propsRef.current.onShotSettled();
+          }
+        } else {
+          const liveDeg = liveAimDegRef.current ?? aimOffsetDeg;
+          const aimHeadingRad = headingToward(ballPos, hole.pin) + degToRad(liveDeg);
+          const carryYds = Math.max(5, expectedCarryYds);
+          const target: Point2 = {
+            x: ballPos.x + carryYds * Math.sin(aimHeadingRad),
+            y: ballPos.y + carryYds * Math.cos(aimHeadingRad),
+          };
+          drawAimLine(ctx!, camera, ballPos, target);
+          drawTargetMarker(ctx!, camera, target, carryYds, surfaceAt(hole, target), unit);
+          drawBallWithShadow(ctx!, camera, ballPos, 0);
+        }
+
+        rafId = requestAnimationFrame(frame);
+      } catch (err) {
+        // Do NOT schedule another frame -- re-throwing into a broken draw
+        // loop every 16ms would spam this catch forever. Hand the error to
+        // React instead (see the canvasError state above) so the
+        // ErrorBoundary around this component can take over.
+        setCanvasError(err instanceof Error ? err : new Error(String(err)));
+      }
     }
 
     // A phone screen redrawing at 60fps forever -- including while the tab

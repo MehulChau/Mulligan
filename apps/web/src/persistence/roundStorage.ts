@@ -149,7 +149,15 @@ function isPuttResultOrNull(v: unknown): v is PuttResult | null {
 export function isValidPersistedRoundState(v: unknown, courseLength: number): v is PersistedRoundStateV1 {
   if (!isPlainObject(v)) return false;
   if (v.schemaVersion !== SCHEMA_VERSION) return false;
-  if (!isFiniteNumber(v.courseHoleIndex) || v.courseHoleIndex < 0 || v.courseHoleIndex >= courseLength) return false;
+  // Number.isInteger, not just finite -- a non-integer index (1.5) is
+  // "finite" and could sit inside [0, courseLength) yet still silently
+  // return undefined from course[persisted.courseHoleIndex] (array
+  // indexing doesn't round), which hydrateRoundState then dereferences
+  // with a non-null assertion. Found by roundStorage.test.ts's fuzzing,
+  // not by inspection.
+  if (!isFiniteNumber(v.courseHoleIndex) || !Number.isInteger(v.courseHoleIndex) || v.courseHoleIndex < 0 || v.courseHoleIndex >= courseLength) {
+    return false;
+  }
   if (!isPlainObject(v.roundScores)) return false;
   if (!isPoint2(v.ballPos)) return false;
   if (!isFiniteNumber(v.aimOffsetDeg)) return false;
